@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>CropGuard | Crop Health</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css">
+
+    <style>
+
+        :root {
+
+            --primary-color: #2e7d32;
+
+            --secondary-color: #7cb342;
+
+            --accent-color: #ff9800;
+
+            --light-color: #f1f8e9;
+
+            --dark-color: #1b5e20;
+
+        }
+
+        
+
+        body {
+
+            background-color: #f8f9fa;
+
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+
+        }
+
+        
+
+        .navbar {
+
+            background-color: var(--primary-color);
+
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+        }
+
+        
+
+        .hero-section {
+
+            background: #edf4e8;
+
+            color: #183b24;
+
+            padding: 4.5rem 0;
+
+            margin-bottom: 0;
+
+            position: relative;
+
+        }
+
+        
+
+        .card {
+
+            border-radius: 10px;
+
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+            margin-bottom: 20px;
+
+            border: none;
+
+            transition: transform 0.3s ease;
+
+        }
+
+        
+
+        .card:hover {
+
+            transform: translateY(-5px);
+
+        }
+
+        
+
+        .card-header {
+
+            background-color: var(--primary-color);
+
+            color: white;
+
+            border-radius: 10px 10px 0 0 !important;
+
+        }
+
+        
+
+        .btn-primary {
+
+            background-color: var(--primary-color);
+
+            border-color: var(--primary-color);
+
+        }
+
+        
+
+        .btn-primary:hover {
+
+            background-color: var(--dark-color);
+
+            border-color: var(--dark-color);
+
+        }
+
+        
+
+        .btn-outline-primary {
+
+            color: var(--primary-color);
+
+            border-color: var(--primary-color);
+
+        }
+
+        
+
+        .btn-outline-primary:hover {
+
+            background-color: var(--primary-color);
+
+            color: white;
+
+        }
+
+        
+
+        .risk-high {
+
+            color: #dc3545;
+
+            font-weight: bold;
+
+        }
+
+        
+
+        .risk-medium {
+
+            color: #ffc107;
+
+            font-weight: bold;
+
+        }
+
+        
+
+        .risk-low {
+
+            color: #28a745;
+
+            font-weight: bold;
+
+        }
+
+        
+
+        .upload-container {
+
+            border: 2px dashed #ccc;
+
+            border-radius: 10px;
+
+            padding: 2rem;
+
+            text-align: center;
+
+            cursor: pointer;
+
+            transition: all 0.3s;
+
+        }
+
+        
+
+        .upload-container:hover {
+
+            border-color: var(--primary-color);
+
+            background-color: var(--light-color);
+
+        }
+
+        
+
+        .preview-image {
+
+            max-width: 100%;
+
+            max-height: 300px;
+
+            border-radius: 10px;
+
+            margin-top: 1rem;
+
+            object-fit: contain;
+
+        }
+
+        
+
+        .disease-symptom {
+
+            padding: 0.5rem;
+
+            border-left: 3px solid var(--secondary-color);
+
+            margin-bottom: 0.5rem;
+
+            background-color: #f8f9fa;
+
+        }
+
+        
+
+        .treatment-item {
+
+            padding: 0.5rem;
+
+            border-left: 3px solid var(--accent-color);
+
+            margin-bottom: 0.5rem;
+
+            background-color: #fff8e1;
+
+        }
+
+        
+
+        .prevention-item {
+
+            padding: 0.5rem;
+
+            border-left: 3px solid var(--primary-color);
+
+            margin-bottom: 0.5rem;
+
+            background-color: #e8f5e9;
+
+        }
+
+        
+
+        .weather-card {
+
+            background: linear-gradient(135deg, #67b26f 0%, #4ca2cd 100%);
+
+            color: white;
+
+        }
+
+        
+
+        .spinner-border {
+
+            width: 3rem;
+
+            height: 3rem;
+
+        }
+
+        
+
+        .result-section {
+
+            display: none;
+
+        }
+
+        
+
+        footer {
+
+            background-color: var(--dark-color);
+
+            color: white;
+
+            padding: 2rem 0;
+
+            margin-top: 3rem;
+
+        }
+
+        
+
+        .feature-icon {
+
+            font-size: 2.5rem;
+
+            color: var(--primary-color);
+
+            margin-bottom: 1rem;
+
+        }
+
+        
+
+        .history-item {
+
+            border-left: 4px solid var(--secondary-color);
+
+            padding: 0.5rem 1rem;
+
+            margin-bottom: 0.5rem;
+
+            background-color: #f8f9fa;
+
+            border-radius: 4px;
+
+            cursor: pointer;
+
+            transition: all 0.2s;
+
+        }
+
+        
+
+        .history-item:hover {
+
+            background-color: #e9ecef;
+
+            transform: translateX(5px);
+
+        }
+
+        
+
+        .crop-image {
+
+            width: 60px;
+
+            height: 60px;
+
+            object-fit: cover;
+
+            border-radius: 8px;
+
+            margin-right: 10px;
+
+        }
+
+        
+
+        .notification-toast {
+
+            position: fixed;
+
+            bottom: 20px;
+
+            right: 20px;
+
+            z-index: 1050;
+
+        }
+
+        
+
+        .progress-bar {
+
+            transition: width 0.3s ease;
+
+        }
+
+        
+
+        .language-selector {
+
+            margin-right: 15px;
+
+        }
+
+        
+
+        .theme-switcher {
+
+            cursor: pointer;
+
+            padding: 5px 10px;
+
+            border-radius: 20px;
+
+            background: #f1f1f1;
+
+        }
+
+        
+
+        .dark-mode {
+
+            background-color: #1a1a1a;
+
+            color: #f1f1f1;
+
+        }
+
+        
+
+        .dark-mode .card {
+
+            background-color: #2d2d2d;
+
+            color: #f1f1f1;
+
+        }
+
+        
+
+        .dark-mode .form-control {
+
+            background-color: #3d3d3d;
+
+            color: #f1f1f1;
+
+            border-color: #555;
+
+        }
+
+        
+
+        .crop-info-img {
+
+            width: 100%;
+
+            border-radius: 8px;
+
+            margin-bottom: 15px;
+
+        }
+
+        
+
+        .stats-box {
+
+            text-align: center;
+
+            padding: 15px;
+
+            border-radius: 8px;
+
+            background: linear-gradient(45deg, #67b26f, #4ca2cd);
+
+            color: white;
+
+            margin-bottom: 20px;
+
+        }
+
+        
+
+        .stats-number {
+
+            font-size: 2rem;
+
+            font-weight: bold;
+
+        }
+
+        
+
+        .seasonal-tip {
+
+            border-left: 4px solid var(--accent-color);
+
+            padding: 15px;
+
+            margin-bottom: 20px;
+
+            background-color: #fff9e6;
+
+            border-radius: 0 8px 8px 0;
+
+        }
+
+        
+
+        .alert-card {
+
+            border-left: 4px solid #dc3545;
+
+            padding: 15px;
+
+            margin-bottom: 20px;
+
+            background-color: #ffe6e6;
+
+            border-radius: 0 8px 8px 0;
+
+        }
+
+        
+
+        /* Print styles */
+
+        @media print {
+
+            .navbar, .hero-section, footer, .no-print {
+
+                display: none !important;
+
+            }
+
+            
+
+            .container {
+
+                width: 100%;
+
+                max-width: 100%;
+
+            }
+
+            
+
+            .card {
+
+                box-shadow: none;
+
+                border: 1px solid #ddd;
+
+            }
+
+        }
+
+
+        .app-shell { min-height: 70vh; }
+        .app-nav { position: sticky; top: 0; z-index: 20; }
+        .app-view { display: none; padding: 2rem 0 4rem; }
+        .app-view.active { display: block; }
+        .hero-section { border-radius: 0; }
+        .hero-copy { max-width: 900px; margin-inline: auto; }
+        .hero-copy h1 { color: #183b24; letter-spacing: -.035em; line-height: 1.1; }
+        .hero-copy .lead { max-width: 760px; color: #526657; line-height: 1.65; }
+        .landing-section { padding-top: 3.75rem; padding-bottom: .5rem; }
+        .landing-section-heading { max-width: 680px; margin: 0 auto 2rem; text-align: center; }
+        .landing-section-heading h2 { color: var(--dark-color); font-weight: 750; letter-spacing: -.02em; }
+        .feature-card { height: 100%; padding: 1.5rem; border: 1px solid #e0e9dc; border-radius: 14px; background: #fff; }
+        .feature-icon { display: inline-grid; place-items: center; width: 46px; height: 46px; margin-bottom: 1.1rem; border-radius: 12px; background: #eaf3e6; color: var(--dark-color); font-size: 1.15rem; }
+        .feature-card h3 { color: #234b2b; font-size: 1.08rem; font-weight: 700; }
+        .feature-card p { margin: 0; color: #5d6b60; line-height: 1.6; }
+        .workflow-step { height: 100%; padding: 1.35rem; border: 1px solid #e0e9dc; border-radius: 14px; background: #fff; }
+        .workflow-number { display: inline-grid; place-items: center; width: 38px; height: 38px; margin-bottom: 1rem; border-radius: 50%; background: #e4efdf; color: #24552b; font-weight: 750; }
+        .workflow-step h3 { font-size: 1rem; font-weight: 700; color: #234b2b; }
+        .workflow-step p { margin: 0; color: #627064; font-size: .94rem; line-height: 1.55; }
+        .stat-card { border: 0; box-shadow: 0 5px 24px rgba(30,70,35,.08); }
+        .stat-number { color: var(--primary-color); font-size: 2rem; font-weight: 750; }
+        .page-title { color: var(--dark-color); font-weight: 750; }
+        .panel-card { border: 0; box-shadow: 0 5px 24px rgba(30,70,35,.07); }
+        .crop-card { border-left: 4px solid var(--secondary-color); }
+        .drop-zone { border: 2px dashed #9cbd91; border-radius: 16px; background: #f7fbf4; }
+        .preview-image { max-height: 320px; max-width: 100%; object-fit: contain; }
+        .risk-pill { border-radius: 999px; padding: .35rem .75rem; font-weight: 700; }
+        .risk-high { background: #fde8e7; color: #a3211a; }
+        .risk-medium { background: #fff4d7; color: #805b00; }
+        .risk-low { background: #e7f5e8; color: #236b2a; }
+        .progress-note { color: #526354; }
+        .timeline-item { border-left: 2px solid #b2d0a7; padding: 0 0 1.2rem 1rem; margin-left: .5rem; }
+        .toast-container { z-index: 1100; }
+        .table-responsive { border-radius: 12px; }
+        .form-label { font-weight: 600; }
+        [hidden] { display: none !important; }
+        @media (max-width: 767px) { .app-view { padding: 1.25rem 0 3rem; } .hero-section { padding: 3rem 0; } .mobile-full { width: 100%; } }
+    </style>
+
+</head>
+
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark app-nav">
+ <div class="container"><a class="navbar-brand fw-bold" href="#landing"><i class="fas fa-leaf me-2"></i>CropGuard</a>
+  <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNav" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+  <div class="collapse navbar-collapse" id="appNav">
+   <ul class="navbar-nav me-auto" id="mainNav">
+    <li class="nav-item"><a class="nav-link" href="#landing" data-nav data-i18n="Home">Home</a></li>
+    <li class="nav-item" data-farmer><a class="nav-link" href="#dashboard" data-nav data-i18n="Dashboard">Dashboard</a></li>
+    <li class="nav-item" data-farmer><a class="nav-link" href="#crops" data-nav data-i18n="Crops">Crops</a></li>
+    <li class="nav-item" data-farmer><a class="nav-link" href="#scan" data-nav data-i18n="Scan">Scan</a></li>
+    <li class="nav-item" data-farmer><a class="nav-link" href="#history" data-nav data-i18n="History">History</a></li>
+    <li class="nav-item" data-farmer><a class="nav-link" href="#alerts" data-nav><span data-i18n="Alerts">Alerts</span> <span id="alertBadge" class="badge bg-warning text-dark ms-1" hidden>0</span></a></li>
+    <li class="nav-item" data-expert hidden><a class="nav-link" href="#expert" data-nav data-i18n="Expert cases">Expert cases</a></li>
+    <li class="nav-item" data-admin hidden><a class="nav-link" href="#admin" data-nav data-i18n="Administration">Administration</a></li>
+   </ul>
+   <div class="d-flex gap-2 align-items-center" id="navAuth">
+    <a class="btn btn-outline-light btn-sm" href="#login" data-i18n="Log in">Log in</a><a class="btn btn-light btn-sm text-success fw-semibold" href="#register" data-i18n="Create account">Create account</a>
+   </div>
+   <label class="visually-hidden" for="languageSwitcher">Language</label><select id="languageSwitcher" class="form-select form-select-sm w-auto" aria-label="Language"><option>English</option><option>Marathi</option><option>Tamil</option></select>
+   <div id="navUser" class="d-none align-items-center gap-2 text-white"><span id="navIdentity" class="small"></span><button id="logoutBtn" class="btn btn-outline-light btn-sm" data-i18n="Log out">Log out</button></div>
+  </div>
+ </div>
+</nav>
+<div id="toastHost" class="toast-container position-fixed top-0 end-0 p-3" aria-live="polite" aria-atomic="true"></div>
+<main class="app-shell">
+<section id="page-landing" class="app-view">
+ <div class="hero-section">
+  <div class="container hero-copy text-center">
+   <p class="text-success text-uppercase fw-bold small mb-3">CropGuard crop health platform</p>
+   <h1 class="display-4 fw-bold mb-3" data-i18n="Detect Crop Diseases Early. Protect Your Harvest.">Detect Crop Diseases Early. Protect Your Harvest.</h1>
+   <p class="lead mx-auto mb-4">Upload a crop image, get AI-assisted disease insights, understand weather-related risks, and receive actionable recommendations.</p>
+   <div class="d-flex justify-content-center gap-3 flex-wrap"><a class="btn btn-success btn-lg px-4" href="#register">Get started</a><a class="btn btn-outline-success btn-lg px-4" href="#login">Farmer sign in</a></div>
+  </div>
+ </div>
+ <section class="container landing-section" aria-labelledby="featuresHeading">
+  <div class="landing-section-heading"><p class="text-success text-uppercase fw-bold small mb-2">Practical tools for the field</p><h2 id="featuresHeading" class="h2" data-i18n="Key Features">Key Features</h2><p class="text-muted mb-0">Support each crop decision with useful observations and clear next steps.</p></div>
+  <div class="row g-3 g-lg-4">
+   <div class="col-12 col-sm-6 col-xl-3"><article class="feature-card"><span class="feature-icon"><i class="fas fa-leaf" aria-hidden="true"></i></span><h3>AI Disease Detection</h3><p>Upload crop images and receive AI-assisted insights about possible diseases.</p></article></div>
+   <div class="col-12 col-sm-6 col-xl-3"><article class="feature-card"><span class="feature-icon"><i class="fas fa-cloud-sun" aria-hidden="true"></i></span><h3>Weather Risk Analysis</h3><p>Understand how current weather conditions may affect crop health.</p></article></div>
+   <div class="col-12 col-sm-6 col-xl-3"><article class="feature-card"><span class="feature-icon"><i class="fas fa-bell" aria-hidden="true"></i></span><h3>Early Risk Alerts</h3><p>Receive alerts when disease or environmental risks need attention.</p></article></div>
+   <div class="col-12 col-sm-6 col-xl-3"><article class="feature-card"><span class="feature-icon"><i class="fas fa-user-check" aria-hidden="true"></i></span><h3>Expert Review</h3><p>Send uncertain cases to an expert for additional review.</p></article></div>
+  </div>
+ </section>
+ <section class="container landing-section pb-5" aria-labelledby="workflowHeading">
+  <div class="landing-section-heading"><p class="text-success text-uppercase fw-bold small mb-2">A clear path from image to action</p><h2 id="workflowHeading" class="h2" data-i18n="How CropGuard Works">How CropGuard Works</h2><p class="text-muted mb-0">Each step builds on the crop and scan details you provide.</p></div>
+  <div class="row g-3">
+   <div class="col-12 col-sm-6 col-lg"><article class="workflow-step"><span class="workflow-number">01</span><h3>Upload Crop Image</h3><p>Choose a registered crop and add a clear leaf image.</p></article></div>
+   <div class="col-12 col-sm-6 col-lg"><article class="workflow-step"><span class="workflow-number">02</span><h3>AI Disease Analysis</h3><p>Review the configured model's finding and confidence.</p></article></div>
+   <div class="col-12 col-sm-6 col-lg"><article class="workflow-step"><span class="workflow-number">03</span><h3>Risk Assessment</h3><p>See the estimated risk and the factors that contributed.</p></article></div>
+   <div class="col-12 col-sm-6 col-lg"><article class="workflow-step"><span class="workflow-number">04</span><h3>Recommendations</h3><p>Review practical prevention and management information.</p></article></div>
+   <div class="col-12 col-sm-6 col-lg"><article class="workflow-step"><span class="workflow-number">05</span><h3>Expert Review when needed</h3><p>Ask for an additional review when a result is uncertain.</p></article></div>
+  </div>
+ </section>
+</section>
+<section id="page-login" class="app-view"><div class="container" style="max-width:560px"><div class="card panel-card p-4 p-md-5"><h1 class="page-title h2">Welcome back</h1><p class="text-muted">Sign in to see your crops and scans.</p><form id="loginForm"><label class="form-label" for="loginEmail">Email</label><input class="form-control mb-3" id="loginEmail" type="email" autocomplete="username" required><label class="form-label" for="loginPassword">Password</label><input class="form-control mb-3" id="loginPassword" type="password" autocomplete="current-password" required><button class="btn btn-success w-100" type="submit">Log in</button></form><button class="btn btn-link px-0 mt-2" type="button" id="showPasswordReset">Forgot password?</button><form id="passwordResetForm" class="mt-2" hidden><label class="form-label" for="resetEmail">Email for reset instructions</label><input class="form-control mb-2" id="resetEmail" type="email" required><button class="btn btn-outline-success" type="submit">Send reset instructions</button></form><form id="updatePasswordForm" class="mt-3" hidden><label class="form-label" for="newPassword">New password</label><input class="form-control mb-2" id="newPassword" type="password" minlength="10" autocomplete="new-password" required><button class="btn btn-success" type="submit">Update password</button></form><p class="mt-3 mb-0">New to CropGuard? <a href="#register">Create an account</a></p></div></div></section>
+<section id="page-register" class="app-view"><div class="container" style="max-width:560px"><div class="card panel-card p-4 p-md-5"><h1 class="page-title h2">Create farmer account</h1><p class="text-muted">Your account is private to you. Add approximate farm location in your profile.</p><form id="registerForm"><label class="form-label" for="registerName">Full name</label><input class="form-control mb-3" id="registerName" autocomplete="name" required maxlength="120"><label class="form-label" for="registerEmail">Email</label><input class="form-control mb-3" id="registerEmail" type="email" autocomplete="email" required><label class="form-label" for="registerPassword">Password</label><input class="form-control mb-3" id="registerPassword" type="password" minlength="10" autocomplete="new-password" required><div class="form-text mb-3">Use at least 10 characters.</div><button class="btn btn-success w-100" type="submit">Create account</button></form><p class="mt-3 mb-0">Already registered? <a href="#login">Log in</a></p></div></div></section>
+<section id="page-dashboard" class="app-view"><div class="container"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4"><div><p class="text-success fw-semibold mb-1">FARMER WORKSPACE</p><h1 class="page-title h2 mb-1">Your crop dashboard</h1><p class="text-muted mb-0" id="dashboardGreeting">Your crops and recent field observations.</p></div><a class="btn btn-success" href="#scan"><i class="fas fa-camera me-2"></i>Scan a crop</a></div><div class="row g-3 mb-4"><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">My crops</div><div class="stat-number" id="myCropCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">Scans loaded (up to 200)</div><div class="stat-number" id="myScanCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">Unread alerts</div><div class="stat-number" id="myAlertCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">High risk in loaded scans</div><div class="stat-number" id="myHighRiskCount">0</div></div></div></div><div class="row g-4"><div class="col-lg-7"><div class="card panel-card p-4 h-100"><div class="d-flex justify-content-between"><h2 class="h5">My crops</h2><a href="#crops">Manage crops</a></div><div id="dashboardCrops" class="row g-3"><p class="text-muted">Loading crops...</p></div></div></div><div class="col-lg-5"><div class="card panel-card p-4 h-100"><div class="d-flex justify-content-between"><h2 class="h5">Recent scans</h2><a href="#history">View history</a></div><div id="dashboardScans"><p class="text-muted">Loading scan history...</p></div></div></div></div></div></section>
+<section id="page-profile" class="app-view"><div class="container" style="max-width:900px"><h1 class="page-title h2">Farmer profile</h1><p class="text-muted">Use approximate village or district details. Precise coordinates are not required.</p><div class="card panel-card p-4"><form id="profileForm" class="row g-3"><div class="col-md-6"><label class="form-label" for="profileName">Full name</label><input id="profileName" class="form-control" maxlength="120"></div><div class="col-md-6"><label class="form-label" for="profileEmail">Email</label><input id="profileEmail" class="form-control" type="email" readonly></div><div class="col-md-6"><label class="form-label" for="profileMobile">Mobile</label><input id="profileMobile" class="form-control" type="tel" maxlength="30"></div><div class="col-md-6"><label class="form-label" for="profileLanguage">Preferred language</label><select id="profileLanguage" class="form-select"><option>English</option><option>Marathi</option><option>Tamil</option></select></div><div class="col-md-4"><label class="form-label" for="profileState">State</label><input id="profileState" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileDistrict">District</label><input id="profileDistrict" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileVillage">Village / location</label><input id="profileVillage" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileArea">Farm area</label><input id="profileArea" class="form-control" type="number" min="0" step="0.01"></div><div class="col-md-4"><label class="form-label" for="profileSoil">Soil type</label><input id="profileSoil" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileIrrigation">Irrigation</label><input id="profileIrrigation" class="form-control"></div><div class="col-12"><button class="btn btn-success" type="submit">Save profile</button></div></form></div></div></section>
+<section id="page-crops" class="app-view"><div class="container"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4"><div><h1 class="page-title h2">Crop management</h1><p class="text-muted">Register crops to connect scans, risk, and growing history.</p></div><button class="btn btn-success" id="newCropBtn"><i class="fas fa-plus me-2"></i>Add crop</button></div><div id="cropEditor" class="card panel-card p-4 mb-4" hidden><h2 class="h5" id="cropFormHeading">Add a crop</h2><form id="cropForm" class="row g-3"><input type="hidden" id="cropEditId"><div class="col-md-4"><label class="form-label" for="cropName">Crop</label><input class="form-control" id="cropName" list="cropSuggestions" required maxlength="80"><datalist id="cropSuggestions"><option>Tomato</option><option>Potato</option><option>Rice</option><option>Wheat</option><option>Maize</option><option>Cotton</option><option>Soybean</option><option>Sugarcane</option><option>Onion</option><option>Chilli</option></datalist></div><div class="col-md-4"><label class="form-label" for="cropVariety">Variety</label><input class="form-control" id="cropVariety"></div><div class="col-md-4"><label class="form-label" for="cropSowingDate">Sowing date</label><input class="form-control" id="cropSowingDate" type="date"></div><div class="col-md-4"><label class="form-label" for="cropGrowthStage">Growth stage</label><select id="cropGrowthStage" class="form-select"><option value="">Select stage</option><option>Seedling</option><option>Vegetative</option><option>Flowering</option><option>Fruiting</option><option>Maturity</option><option>Harvest</option></select></div><div class="col-md-4"><label class="form-label" for="cropArea">Area</label><input class="form-control" id="cropArea" type="number" min="0" step="0.01"></div><div class="col-md-4"><label class="form-label" for="cropLocation">Location</label><input class="form-control" id="cropLocation" placeholder="Village or district"></div><div class="col-md-4"><label class="form-label" for="cropSoil">Soil type</label><input class="form-control" id="cropSoil"></div><div class="col-md-4"><label class="form-label" for="cropIrrigation">Irrigation type</label><input class="form-control" id="cropIrrigation"></div><div class="col-12 d-flex gap-2"><button class="btn btn-success" type="submit">Save crop</button><button class="btn btn-outline-secondary" type="button" id="cancelCropBtn">Cancel</button></div></form></div><div id="cropList" class="row g-3"><p class="text-muted">Loading crops...</p></div><div id="cropTimeline" class="card panel-card p-4 mt-4" hidden></div></div></section>
+<section id="page-scan" class="app-view"><div class="container" style="max-width:1050px"><h1 class="page-title h2">Scan a crop</h1><p class="text-muted">Choose a registered crop, then upload or capture a clear leaf image. AI results depend on the configured model.</p><div class="row g-4"><div class="col-lg-5"><div class="card panel-card p-4"><form id="scanForm"><label class="form-label" for="scanCrop">Select crop</label><select class="form-select mb-3" id="scanCrop" required><option value="">Choose one of your crops</option></select><label class="form-label" for="scanType">Analysis type</label><select class="form-select mb-3" id="scanType"><option value="disease">Disease detection</option><option value="pest">Pest detection</option></select><label class="form-label" for="scanLocation">Approximate location for weather</label><input class="form-control mb-2" id="scanLocation" placeholder="Village or district (optional)"><button class="btn btn-sm btn-outline-success mb-3" type="button" id="checkWeatherBtn">Check local weather</button><div id="scanWeatherInfo" class="small text-muted mb-3" aria-live="polite"></div><label class="drop-zone d-block p-4 text-center mb-3" for="scanImage"><i class="fas fa-camera fa-2x text-success mb-2"></i><span class="d-block fw-semibold">Upload or take a photo</span><span class="small text-muted">JPG, PNG, WEBP - maximum 5 MB</span></label><input class="form-control" id="scanImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required><img id="scanPreview" class="preview-image rounded mt-3" alt="Preview of selected crop image" hidden><button class="btn btn-success btn-lg w-100 mt-4" type="submit" id="analyzeCropBtn"><i class="fas fa-magnifying-glass me-2"></i>Analyze crop</button></form><div id="scanProgress" class="mt-4" hidden aria-live="polite"><p class="fw-semibold mb-2">Analysis in progress</p><ol class="mb-0"><li data-progress="upload">Uploading image...</li><li data-progress="analysis">Analyzing...</li><li data-progress="weather">Checking weather...</li><li data-progress="risk">Calculating risk...</li></ol></div></div></div><div class="col-lg-7"><div id="scanMessage" class="alert alert-info">Your result and recommendations will appear here.</div><div id="scanResult" class="card panel-card p-4" hidden></div></div></div></div></section>
+<section id="page-history" class="app-view"><div class="container"><h1 class="page-title h2">Scan history</h1><p class="text-muted">Your latest 200 saved crop observations and expert review status.</p><div class="card panel-card p-3"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Date</th><th>Crop</th><th>Detection</th><th>Type</th><th>Confidence</th><th>Severity</th><th>Risk</th><th>Status</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div><div id="historyEmpty" class="text-muted p-3" hidden>No data yet. Your completed scans will appear here.</div></div><div id="historyDetail" class="card panel-card p-4 mt-4" hidden></div></div></section>
+<section id="page-alerts" class="app-view"><div class="container"><h1 class="page-title h2">Alerts</h1><p class="text-muted">High-risk alerts created from your saved crop scans.</p><div id="alertsList" class="row g-3"></div><p id="alertsEmpty" class="text-muted" hidden>No data yet. High-risk scan alerts will appear here.</p></div></section>
+<section id="page-expert" class="app-view" data-restricted="EXPERT,ADMIN"><div class="container"><h1 class="page-title h2">Expert workspace</h1><p class="text-muted">Review farmer-submitted crop cases.</p><div id="expertCases" class="row g-3"></div><p id="expertEmpty" class="text-muted" hidden>No pending expert cases.</p><div id="expertCaseDetail" class="card panel-card p-4 mt-4" hidden></div></div></section>
+<section id="page-admin" class="app-view" data-restricted="ADMIN"><div class="container"><h1 class="page-title h2">Administration</h1><p class="text-muted">Live platform counts and knowledge base management.</p><div class="row g-3 mb-4" id="adminMetrics"></div><div class="row g-4"><div class="col-lg-6"><div class="card panel-card p-4"><h2 class="h5">Farmers</h2><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Name</th><th>Email</th><th>District</th></tr></thead><tbody id="adminFarmers"></tbody></table></div><p id="adminFarmersEmpty" class="text-muted" hidden>No data yet.</p></div></div><div class="col-lg-6"><div class="card panel-card p-4"><h2 class="h5">Recent scans</h2><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Finding</th><th>Type</th><th>Risk</th></tr></thead><tbody id="adminScans"></tbody></table></div><p id="adminScansEmpty" class="text-muted" hidden>No data yet.</p></div></div></div><div class="card panel-card p-4 mt-4"><div class="d-flex justify-content-between flex-wrap gap-2"><div><h2 class="h5">Disease and pest knowledge</h2><p class="text-muted small">Only admins can change published entries.</p></div><button class="btn btn-success btn-sm" id="newKnowledgeBtn">Add entry</button></div><div class="row g-3"><div class="col-md-4"><label class="form-label" for="knowledgeKind">Type</label><select id="knowledgeKind" class="form-select"><option value="diseases">Disease</option><option value="pests">Pest</option></select></div><div class="col-md-4"><label class="form-label" for="knowledgeSelect">Entry</label><select id="knowledgeSelect" class="form-select"></select></div><div class="col-md-4 d-flex align-items-end gap-2"><button id="editKnowledgeBtn" class="btn btn-outline-success" type="button">Edit selected</button><button id="deleteKnowledgeBtn" class="btn btn-outline-danger" type="button">Delete</button></div></div><form id="knowledgeForm" class="row g-3 mt-2" hidden><input id="knowledgeId" type="hidden"><div class="col-md-6"><label class="form-label" for="knowledgeName">Name</label><input id="knowledgeName" class="form-control" required></div><div class="col-md-6"><label class="form-label" for="knowledgeScientific">Scientific name</label><input id="knowledgeScientific" class="form-control"></div><div class="col-md-6"><label class="form-label" for="knowledgeSymptoms">Symptoms (one per line)</label><textarea id="knowledgeSymptoms" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgePrevention">Prevention (one per line)</label><textarea id="knowledgePrevention" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgeCultural">Cultural management (one per line)</label><textarea id="knowledgeCultural" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgeBiological">Biological management (one per line)</label><textarea id="knowledgeBiological" class="form-control" rows="3"></textarea></div><div class="col-12"><label class="form-label" for="knowledgeChemical">Chemical management (one per line; label and local expert advice required)</label><textarea id="knowledgeChemical" class="form-control" rows="3"></textarea></div><div class="col-12 d-flex gap-2"><button class="btn btn-success" type="submit">Save entry</button><button class="btn btn-outline-secondary" id="cancelKnowledgeBtn" type="button">Cancel</button></div></form><div id="knowledgeList" class="row g-2 mt-2"></div></div><div id="adminAnalytics" class="card panel-card p-4 mt-4"><h2 class="h5">Scan analytics</h2><p class="text-muted">Risk distribution among the latest 500 returned scans.</p><div id="analyticsSummary" class="d-flex gap-3 flex-wrap"></div></div></div></section>
+</main>
+<footer class="py-4 mt-4" id="appFooter"><div class="container d-flex justify-content-between flex-wrap gap-2"><span><i class="fas fa-leaf me-2 text-success"></i>CropGuard</span><span class="text-muted small">Crop health information supports, but does not replace, local agricultural advice.</span></div></footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/i18n.js"></script>
+<script src="/static/app.js"></script>
+</body>
+
+</html>
