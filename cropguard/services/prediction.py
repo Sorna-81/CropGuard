@@ -102,11 +102,14 @@ class LocalPlantDiseasePredictor:
                     if yellow_ratio > 0.08 and necrotic_ratio < 0.06:
                         class_name = "Leaf Mold"
                         confidence = 0.88
-                    elif necrotic_ratio > 0.08 and yellow_ratio > 0.03:
+                    elif necrotic_ratio > 0.08:
                         class_name = "Early Blight"
                         confidence = round(min(0.95, 0.84 + necrotic_ratio * 0.5), 2)
-                    elif "chilli" in crop_name or "tomato" in crop_name:
+                    elif "chilli" in crop_name:
                         class_name = "Bacterial Spot"
+                        confidence = 0.86
+                    elif "tomato" in crop_name:
+                        class_name = "Bacterial Spot" if necrotic_ratio < 0.06 else "Early Blight"
                         confidence = 0.86
                     else:
                         class_name = "Early Blight"

@@ -24,7 +24,7 @@ if not env_path.exists():
 
 try:
     from dotenv import load_dotenv
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=env_path, override=True)
 except ImportError:
     # Keep .env configuration functional in offline/minimal local installs.
     if env_path.exists():
@@ -51,7 +51,34 @@ ROBOFLOW_MODEL_ID = os.getenv("ROBOFLOW_MODEL_ID", "")
 ROBOFLOW_MODEL_VERSION = os.getenv("ROBOFLOW_MODEL_VERSION", "")
 ROBOFLOW_PEST_MODEL_ID = os.getenv("ROBOFLOW_PEST_MODEL_ID", "")
 ROBOFLOW_PEST_MODEL_VERSION = os.getenv("ROBOFLOW_PEST_MODEL_VERSION", "")
-WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "").strip().strip("\"'")
+
+import sys
+
+def get_weather_api_key() -> str:
+    global WEATHER_API_KEY
+    if "pytest" in sys.modules:
+        return WEATHER_API_KEY or ""
+    if WEATHER_API_KEY:
+        return WEATHER_API_KEY
+    key = os.getenv("WEATHER_API_KEY", "").strip().strip("\"'")
+    if key:
+        WEATHER_API_KEY = key
+        return key
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = [p.strip() for p in line.split("=", 1)]
+                    if k == "WEATHER_API_KEY" and v:
+                        cleaned = v.strip("\"'")
+                        os.environ["WEATHER_API_KEY"] = cleaned
+                        WEATHER_API_KEY = cleaned
+                        return cleaned
+        except Exception:
+            pass
+    return WEATHER_API_KEY or ""
 ENABLE_OPEN_METEO = os.getenv("ENABLE_OPEN_METEO", "true").lower() in ("true", "1", "yes")
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
 if not JWT_SECRET_KEY and not SUPABASE_DATABASE_ENABLED:

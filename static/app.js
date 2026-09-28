@@ -73,15 +73,27 @@
       }
       let data = null;
       if (!rawResponse || !response.ok) try { data = await response.json(); } catch (_) { /* non-JSON error */ }
+      const extractMessage = (d) => {
+        if (!d) return null;
+        if (typeof d.message === 'string') return d.message;
+        if (typeof d.detail === 'string') return d.detail;
+        if (Array.isArray(d.detail)) return d.detail.map((e) => e.msg || JSON.stringify(e)).join(', ');
+        if (Array.isArray(d.errors)) return d.errors.map((e) => `${e.field}: ${e.message}`).join(', ');
+        return null;
+      };
+      const errorMsg = extractMessage(data);
       if (response.status === 401) {
+        if (['/api/auth/login', '/api/auth/register', '/api/auth/signup'].includes(path)) {
+          throw new Error(errorMsg || 'Invalid email or password.');
+        }
         clearSession('Your session has expired. Please log in again.');
         const error = new Error('Please log in to continue.'); error.handled = true; throw error;
       }
-      if (response.status === 403) throw new Error(data?.message || 'Your account does not have access to this page.');
-      if (response.status === 404) throw new Error(data?.message || 'That record could not be found. It may have been removed.');
-      if (response.status === 422) throw new Error(data?.message || 'Check the required fields and try again.');
-      if (response.status >= 500) throw new Error(data?.message || 'CropGuard could not complete that request. Please try again.');
-      if (!response.ok) throw new Error(data?.message || `Request failed (${response.status}).`);
+      if (response.status === 403) throw new Error(errorMsg || 'Your account does not have access to this page.');
+      if (response.status === 404) throw new Error(errorMsg || 'That record could not be found. It may have been removed.');
+      if (response.status === 422) throw new Error(errorMsg || 'Check the required fields and try again.');
+      if (response.status >= 500) throw new Error(errorMsg || 'CropGuard could not complete that request. Please try again.');
+      if (!response.ok) throw new Error(errorMsg || `Request failed (${response.status}).`);
       return rawResponse ? response : data;
     },
     get(path) { return this.request(path); },
@@ -125,10 +137,9 @@
     const profile = $('#profileNav');
     if (loggedIn && state.user.role === 'FARMER' && !profile) {
       const li = document.createElement('li'); li.className = 'nav-item'; li.id = 'profileNav'; li.dataset.farmer = '';
-      li.innerHTML = '<a class="nav-link" href="#profile" data-nav data-i18n="Profile">Profile</a>';
+      li.innerHTML = '<a class="nav-link" href="#profile" data-nav>Profile</a>';
       $('#mainNav').appendChild(li);
     } else if ((!loggedIn || state.user.role !== 'FARMER') && profile) profile.remove();
-    window.CropGuardI18n?.apply(window.CropGuardI18n.selected());
   }
 
   function navigate() {
@@ -162,10 +173,25 @@
   }
 
   function showError(error) { if (!error?.handled) toast(error?.message || 'Something went wrong. Please try again.', 'error'); }
+  const riskClass = (value) => 'risk-' + String(value || 'low').toLowerCase();
   const dateText = (value) => value ? new Date(value).toLocaleString() : '—';
   const confidenceText = (value) => Number.isFinite(Number(value)) ? `${(Number(value) * 100).toFixed(1)}%` : '—';
-  const riskClass = (value) => `risk-${String(value || 'low').toLowerCase()}`;
   const listValue = (value) => Array.isArray(value) ? value : (() => { try { return JSON.parse(value || '[]'); } catch (_) { return []; } })();
+  const objValue = (value) => (value && typeof value === 'object' && !Array.isArray(value)) ? value : (() => { try { const parsed = JSON.parse(value); return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {}; } catch (_) { return {}; } })();
+
+  function formatWeatherBadge(w, fallbackMessage) {
+    if (!w || !Object.keys(w).length) return `<p class="text-muted mb-2"><i class="fas fa-info-circle me-1"></i> ${esc(fallbackMessage || 'Weather unavailable. Risk was calculated without weather data.')}</p>`;
+    const parts = [];
+    if (w.temperature != null) parts.push(`<strong>${esc(w.temperature)} °C</strong>`);
+    if (w.conditions) parts.push(esc(w.conditions));
+    if (w.humidity != null) parts.push(`Humidity ${esc(w.humidity)}%`);
+    if (w.wind_speed != null) parts.push(`Wind ${esc(w.wind_speed)} m/s`);
+    if (w.rainfall != null) parts.push(`Rain ${esc(w.rainfall)} mm`);
+    return `<div class="card bg-light border-0 p-3 mb-3">
+      <div class="fw-semibold text-success mb-1"><i class="fas fa-cloud-sun me-1"></i> ${esc(w.location || 'Local Weather')}</div>
+      <div>${parts.join(' · ')}</div>
+    </div>`;
+  }
 
   $('#registerForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -251,32 +277,15 @@
     const [profile, user] = await Promise.all([api.get('/api/profile'), api.get('/api/auth/me')]);
     const values = { profileName: profile.full_name, profileEmail: user.email, profileMobile: profile.mobile, profileLanguage: profile.language || 'English', profileState: profile.state, profileDistrict: profile.district, profileVillage: profile.village, profileArea: profile.farm_area, profileSoil: profile.soil_type, profileIrrigation: profile.irrigation_type };
     Object.entries(values).forEach(([id, value]) => { const input = $(`#${id}`); if (input) input.value = value ?? ''; });
-    $('#languageSwitcher').value = values.profileLanguage;
-    window.CropGuardI18n?.apply(values.profileLanguage);
   }
 
   $('#profileForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const area = $('#profileArea').value;
     if (area && Number(area) < 0) return toast('Farm area cannot be negative.', 'error');
-    const body = { full_name: $('#profileName').value.trim(), mobile: $('#profileMobile').value.trim(), language: $('#profileLanguage').value, state: $('#profileState').value.trim(), district: $('#profileDistrict').value.trim(), village: $('#profileVillage').value.trim(), farm_area: area ? Number(area) : null, soil_type: $('#profileSoil').value.trim(), irrigation_type: $('#profileIrrigation').value.trim() };
+    const body = { full_name: $('#profileName').value.trim(), mobile: $('#profileMobile').value.trim(), language: $('#profileLanguage')?.value || 'English', state: $('#profileState').value.trim(), district: $('#profileDistrict').value.trim(), village: $('#profileVillage').value.trim(), farm_area: area ? Number(area) : null, soil_type: $('#profileSoil').value.trim(), irrigation_type: $('#profileIrrigation').value.trim() };
     try { await api.put('/api/profile', body); toast('Profile saved.', 'success'); }
     catch (error) { showError(error); }
-  });
-
-  $('#languageSwitcher').value = window.CropGuardI18n?.selected() || 'English';
-  $('#languageSwitcher').addEventListener('change', async (event) => {
-    const language = event.target.value;
-    window.CropGuardI18n?.apply(language);
-    if ($('#profileLanguage')) $('#profileLanguage').value = language;
-    if (state.user?.role === 'FARMER') {
-      try { await api.put('/api/profile', { language }); }
-      catch (error) { showError(error); }
-    }
-  });
-  $('#profileLanguage')?.addEventListener('change', (event) => {
-    $('#languageSwitcher').value = event.target.value;
-    window.CropGuardI18n?.apply(event.target.value);
   });
 
   function resetCropForm() {
@@ -351,14 +360,30 @@
     if (crop) $('#scanLocation').value = crop.location || '';
   });
   $('#checkWeatherBtn').addEventListener('click', async () => {
-    const locationName = $('#scanLocation').value.trim();
+    let locationName = $('#scanLocation').value.trim();
+    if (!locationName) {
+      const crop = state.crops.find((item) => String(item.id) === $('#scanCrop').value);
+      if (crop?.location) {
+        locationName = crop.location.trim();
+        $('#scanLocation').value = locationName;
+      }
+    }
     if (!locationName) return toast('Enter a village or district to check local weather.', 'info');
     $('#scanWeatherInfo').textContent = 'Checking local weather...';
     try {
       const result = await api.get(`/api/weather?location=${encodeURIComponent(locationName)}`);
-      $('#scanWeatherInfo').textContent = result.available
-        ? `${result.weather_data.location}: ${result.weather_data.temperature} °C, humidity ${result.weather_data.humidity}%, ${result.weather_data.conditions}.`
-        : result.message || 'Weather is unavailable.';
+      if (result.available && result.weather_data) {
+        const w = result.weather_data;
+        const details = [];
+        if (w.temperature != null) details.push(`${w.temperature} °C`);
+        if (w.conditions) details.push(w.conditions);
+        if (w.humidity != null) details.push(`Humidity ${w.humidity}%`);
+        if (w.wind_speed != null) details.push(`Wind ${w.wind_speed} m/s`);
+        if (w.rainfall != null) details.push(`Rain ${w.rainfall} mm`);
+        $('#scanWeatherInfo').textContent = `${w.location}: ${details.join(', ')}`;
+      } else {
+        $('#scanWeatherInfo').textContent = result.message || 'Weather is unavailable.';
+      }
     } catch (error) { $('#scanWeatherInfo').textContent = error.message; }
   });
   async function loadScanPage() {
@@ -367,6 +392,9 @@
       $('#scanCrop').value = String(state.selectedCropId);
       if (state.selectedCropLocation) $('#scanLocation').value = state.selectedCropLocation;
       state.selectedCropId = null; state.selectedCropLocation = null;
+    } else if (state.crops.length === 1 && !$('#scanCrop').value) {
+      $('#scanCrop').value = String(state.crops[0].id);
+      if (state.crops[0].location) $('#scanLocation').value = state.crops[0].location;
     }
     $('#scanResult').hidden = true;
     $('#scanMessage').className = 'alert alert-info';
@@ -377,7 +405,12 @@
     const file = $('#scanImage').files[0], crop = state.crops.find((item) => String(item.id) === $('#scanCrop').value);
     if (!crop) return toast('Select a registered crop first.', 'error');
     if (!file) return toast('Choose an image to analyze.', 'error');
-    const form = new FormData(); form.append('image', file); form.append('cropType', crop.name); form.append('crop_id', crop.id); form.append('location', $('#scanLocation').value.trim()); form.append('detection_type', $('#scanType').value);
+    let scanLocation = $('#scanLocation').value.trim();
+    if (!scanLocation && crop.location) {
+      scanLocation = crop.location.trim();
+      $('#scanLocation').value = scanLocation;
+    }
+    const form = new FormData(); form.append('image', file); form.append('cropType', crop.name); form.append('crop_id', crop.id); form.append('location', scanLocation); form.append('detection_type', $('#scanType').value);
     const progress = $('#scanProgress'); progress.hidden = false; $('#analyzeCropBtn').disabled = true;
     const steps = $$('[data-progress]', progress); steps.forEach((step) => { step.classList.remove('text-success', 'fw-bold'); });
     let active = 0; steps[0]?.classList.add('fw-bold');
@@ -392,8 +425,9 @@
       }
       steps.forEach((step) => { step.classList.remove('fw-bold'); step.classList.add('text-success'); });
       state.activeScan = result; renderScanResult(result);
-      $('#scanMessage').className = 'alert alert-success'; $('#scanMessage').textContent = 'Analysis complete. The scan was saved to your history.';
-      toast('Scan saved.', 'success');
+      $('#scanMessage').className = 'alert alert-success';
+      $('#scanMessage').innerHTML = '<strong>Scan saved successfully!</strong> Your crop observation has been recorded. <a href="#history" class="alert-link ms-2">View in History &rarr;</a>';
+      toast('Scan saved successfully.', 'success');
     } catch (error) { $('#scanMessage').className = 'alert alert-danger'; $('#scanMessage').textContent = error.message; }
     finally { clearInterval(timer); $('#analyzeCropBtn').disabled = false; setTimeout(() => { progress.hidden = true; }, 500); }
   });
@@ -406,7 +440,8 @@
     const info = scan.disease_info || {}, weather = scan.weather;
     const risk = scan.risk_level?.toUpperCase() || 'UNAVAILABLE';
     $('#scanResult').hidden = false;
-    $('#scanResult').innerHTML = `<div class="d-flex justify-content-between flex-wrap gap-2"><div><span class="badge text-bg-light">${esc(scan.type)}</span><h2 class="h3 mt-2 mb-1">${esc(scan.disease_name)}</h2><div class="text-muted">${esc(scan.crop_type || 'Crop')}</div></div><span class="risk-pill ${riskClass(risk)}">${esc(risk)} risk · ${Number(scan.risk_score ?? 0)}/100</span></div><div class="row g-3 my-3"><div class="col-6"><div class="small text-muted">Confidence</div><strong>${confidenceText(scan.confidence)}</strong></div><div class="col-6"><div class="small text-muted">Severity estimate</div><strong>${esc(scan.severity || '—')}</strong></div></div>${scan.confidence_warning ? `<div class="alert alert-warning"><strong>Low-confidence result</strong><p class="mb-2">${esc(scan.confidence_warning)}</p><button class="btn btn-sm btn-outline-dark" id="requestReviewBtn">Request Expert Review</button></div>` : ''}<p class="small text-muted">${esc(scan.severity_basis || '')}</p><hr><h3 class="h6">Risk factors</h3><ul>${(scan.risk_reasons || []).map((reason) => `<li>${esc(reason)}</li>`).join('') || '<li>Risk factors are unavailable.</li>'}</ul><h3 class="h6">Weather</h3>${weather ? `<p>${esc(weather.location)} · ${esc(weather.temperature)} °C · Humidity ${esc(weather.humidity)}% · ${esc(weather.conditions)} · Wind ${esc(weather.wind_speed)} m/s${weather.rainfall != null ? ` · Rain ${esc(weather.rainfall)} mm` : ''}</p>` : '<p class="text-muted">Weather unavailable. Risk was calculated without weather data.</p>'}<div class="row">${recommendationSection('Symptoms', info.symptoms)}${recommendationSection('Prevention', info.prevention)}${recommendationSection('Cultural management', info.cultural_management)}${recommendationSection('Biological management', info.biological_management)}${recommendationSection('Chemical management', info.chemical_management)}</div><p class="small text-muted mb-0">Follow locally registered product labels and consult your agricultural officer. Recommendations are general information.</p>`;
+    $('#scanResult').innerHTML = `<div class="d-flex justify-content-between flex-wrap gap-2"><div><span class="badge text-bg-light">${esc(scan.type)}</span><h2 class="h3 mt-2 mb-1">${esc(scan.disease_name)}</h2><div class="text-muted">${esc(scan.crop_type || 'Crop')}</div></div><span class="risk-pill ${riskClass(risk)}">${esc(risk)} risk · ${Number(scan.risk_score ?? 0)}/100</span></div><div class="row g-3 my-3"><div class="col-6"><div class="small text-muted">Confidence</div><strong>${confidenceText(scan.confidence)}</strong></div><div class="col-6"><div class="small text-muted">Severity estimate</div><strong>${esc(scan.severity || '—')}</strong></div></div>${scan.confidence_warning ? `<div class="alert alert-warning"><strong>Low-confidence result</strong><p class="mb-2">${esc(scan.confidence_warning)}</p><button class="btn btn-sm btn-outline-dark" id="requestReviewBtn">Request Expert Review</button></div>` : ''}<p class="small text-muted">${esc(scan.severity_basis || '')}</p><hr><h3 class="h6">Risk factors</h3><ul>${(scan.risk_reasons || []).map((reason) => `<li>${esc(reason)}</li>`).join('') || '<li>Risk factors are unavailable.</li>'}</ul><h3 class="h6">Weather</h3>${(weather && Object.keys(weather).length) ? formatWeatherBadge(weather) : `<p class="text-muted mb-3"><i class="fas fa-info-circle me-1"></i> ${esc(scan.weather_message || 'Weather unavailable. Risk was calculated without weather data.')}</p>`}<div class="d-flex justify-content-end mb-3"><button class="btn btn-sm btn-outline-success" id="scanReportBtn"><i class="fas fa-file-pdf me-1"></i> Download PDF report</button></div><div class="row">${recommendationSection('Symptoms', info.symptoms)}${recommendationSection('Prevention', info.prevention)}${recommendationSection('Cultural management', info.cultural_management)}${recommendationSection('Biological management', info.biological_management)}${recommendationSection('Chemical management', info.chemical_management)}</div><p class="small text-muted mb-0">Follow locally registered product labels and consult your agricultural officer. Recommendations are general information.</p>`;
+    $('#scanReportBtn')?.addEventListener('click', () => downloadReport(scan.prediction_id).catch(showError));
     $('#requestReviewBtn')?.addEventListener('click', async () => {
       try { const response = await api.post(`/api/scans/${scan.prediction_id}/expert-review`, { note: 'Please review this low-confidence scan.' }); toast(`Expert review requested (${response.status}).`, 'success'); $('#requestReviewBtn').disabled = true; }
       catch (error) { showError(error); }
@@ -416,12 +451,22 @@
   async function loadHistory() {
     const [scans, crops] = await Promise.all([api.get('/api/scans'), api.get('/api/crops')]);
     state.scans = scans; state.crops = crops;
-    $('#historyRows').innerHTML = scans.map((scan) => {
+    const rows = $('#historyRows');
+    const empty = $('#historyEmpty');
+    const tableContainer = $('#historyTableContainer');
+    if (!scans || scans.length === 0) {
+      if (rows) rows.innerHTML = '';
+      if (tableContainer) tableContainer.hidden = true;
+      if (empty) empty.hidden = false;
+      return;
+    }
+    if (tableContainer) tableContainer.hidden = false;
+    if (empty) empty.hidden = true;
+    rows.innerHTML = scans.map((scan) => {
       const crop = crops.find((item) => item.id === scan.crop_id);
       const status = scan.review_status || 'Saved';
-      return `<tr><td>${esc(dateText(scan.created_at))}</td><td>${esc(crop?.name || 'Crop removed')}</td><td>${esc(scan.name)}</td><td>${esc(scan.kind)}</td><td>${confidenceText(scan.confidence)}</td><td>${esc(scan.severity || '—')}</td><td><span class="risk-pill ${riskClass(scan.risk_level)}">${esc(scan.risk_level || '—')}</span></td><td>${esc(status)}</td><td><button class="btn btn-sm btn-outline-success" data-open-scan="${scan.id}">Details</button></td></tr>`;
+      return `<tr><td>${esc(dateText(scan.created_at))}</td><td><strong>${esc(crop?.name || 'Crop removed')}</strong></td><td>${esc(scan.name)}</td><td><span class="badge text-bg-light">${esc(scan.kind)}</span></td><td>${confidenceText(scan.confidence)}</td><td>${esc(scan.severity || '—')}</td><td><span class="risk-pill ${riskClass(scan.risk_level)}">${esc(scan.risk_level || '—')}</span></td><td><span class="badge ${status === 'reviewed' ? 'text-bg-success' : 'text-bg-secondary'}">${esc(status)}</span></td><td><button class="btn btn-sm btn-outline-success" data-open-scan="${scan.id}">Details</button></td></tr>`;
     }).join('');
-    $('#historyEmpty').hidden = scans.length > 0;
   }
   $('#historyRows').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-open-scan]'); if (!button) return;
@@ -431,9 +476,9 @@
       const knowledge = await api.get(knowledgeRoute);
       const info = knowledge.find((item) => item.name.toLowerCase() === scan.name.toLowerCase()) || {};
       const panel = $('#historyDetail'); panel.hidden = false;
-      const weather = listValue(scan.weather);
+      const weather = objValue(scan.weather);
       const reviews = scan.expert_reviews || [];
-      panel.innerHTML = `<div class="d-flex justify-content-between"><h2 class="h5">${esc(scan.name)} · ${esc(scan.kind)}</h2><button class="btn-close" id="closeHistoryDetail" aria-label="Close"></button></div><p>Confidence ${confidenceText(scan.confidence)} · Severity ${esc(scan.severity || '—')} · Risk ${esc(scan.risk_level || '—')}</p><p class="small text-muted">${esc(dateText(scan.created_at))}</p><h3 class="h6">Weather and risk factors</h3><p>${weather && Object.keys(weather).length ? esc(JSON.stringify(weather)) : 'Weather unavailable.'}</p><ul>${listValue(scan.risk_reasons).map((r) => `<li>${esc(r)}</li>`).join('') || '<li>No risk factors recorded.</li>'}</ul><div class="row">${recommendationSection('Symptoms', info.symptoms)}${recommendationSection('Prevention', info.prevention)}${recommendationSection('Cultural management', info.cultural_management)}${recommendationSection('Biological management', info.biological_management)}${recommendationSection('Chemical management', info.chemical_management)}</div><h3 class="h6">Expert review</h3>${reviews.length ? reviews.map((review) => `<div class="border rounded p-3 mb-2"><strong>${esc(review.status)}</strong><p class="mb-1">${esc(review.response || review.request_note || 'Awaiting expert response')}</p><small class="text-muted">${esc(dateText(review.reviewed_at || review.created_at))}</small></div>`).join('') : '<p class="text-muted">No expert review requested.</p>'}${Number(scan.confidence) < 0.55 && !reviews.length ? `<button class="btn btn-outline-success" id="historyReviewBtn">Request Expert Review</button>` : ''}`;
+      panel.innerHTML = `<div class="d-flex justify-content-between"><h2 class="h5">${esc(scan.name)} · ${esc(scan.kind)}</h2><button class="btn-close" id="closeHistoryDetail" aria-label="Close"></button></div><p>Confidence ${confidenceText(scan.confidence)} · Severity ${esc(scan.severity || '—')} · Risk ${esc(scan.risk_level || '—')}</p><p class="small text-muted">${esc(dateText(scan.created_at))}</p><h3 class="h6">Weather</h3>${formatWeatherBadge(weather, 'Weather data was not recorded for this scan.')}<h3 class="h6 mt-3">Risk factors</h3><ul>${listValue(scan.risk_reasons).map((r) => `<li>${esc(r)}</li>`).join('') || '<li>No risk factors recorded.</li>'}</ul><div class="row">${recommendationSection('Symptoms', info.symptoms)}${recommendationSection('Prevention', info.prevention)}${recommendationSection('Cultural management', info.cultural_management)}${recommendationSection('Biological management', info.biological_management)}${recommendationSection('Chemical management', info.chemical_management)}</div><h3 class="h6">Expert review</h3>${reviews.length ? reviews.map((review) => `<div class="border rounded p-3 mb-2"><strong>${esc(review.status)}</strong><p class="mb-1">${esc(review.response || review.request_note || 'Awaiting expert response')}</p><small class="text-muted">${esc(dateText(review.reviewed_at || review.created_at))}</small></div>`).join('') : '<p class="text-muted">No expert review requested.</p>'}${Number(scan.confidence) < 0.55 && !reviews.length ? `<button class="btn btn-outline-success" id="historyReviewBtn">Request Expert Review</button>` : ''}`;
       panel.insertAdjacentHTML('afterbegin', `<div class="d-flex justify-content-end gap-2 mb-2"><button class="btn btn-sm btn-outline-success" id="historyReportBtn">Download PDF report</button></div><img id="historyScanImage" class="img-fluid rounded my-2" alt="Uploaded crop scan" hidden style="max-height:320px">`);
       loadPrivateImage(`/api/scans/${scan.id}/image`, $('#historyScanImage'));
       $('#historyReportBtn').addEventListener('click', () => downloadReport(scan.id).catch(showError));
@@ -448,12 +493,41 @@
   async function loadAlerts() {
     const [alerts, crops] = await Promise.all([api.get('/api/alerts'), api.get('/api/crops')]);
     state.alerts = alerts; state.crops = crops; updateAlertBadge(alerts);
-    $('#alertsList').innerHTML = alerts.map((alert) => {
+    const list = $('#alertsList');
+    const empty = $('#alertsEmpty');
+    if (!alerts || alerts.length === 0) {
+      if (list) list.innerHTML = '';
+      if (empty) empty.hidden = false;
+      return;
+    }
+    if (empty) empty.hidden = true;
+    list.innerHTML = alerts.map((alert) => {
       const crop = crops.find((item) => item.id === alert.crop_id);
-      const level = alert.message.toLowerCase().includes('high') ? 'HIGH' : 'ALERT';
-      return `<div class="col-lg-6"><article class="card panel-card p-4 h-100 ${alert.is_read ? '' : 'border-start border-warning border-4'}"><div class="d-flex justify-content-between"><h2 class="h5">${esc(level)} crop alert</h2><span class="badge ${alert.is_read ? 'text-bg-secondary' : 'text-bg-warning'}">${alert.is_read ? 'Read' : 'Unread'}</span></div><p>${esc(alert.message)}</p><div class="small text-muted">${esc(crop?.name || 'Crop')} · ${esc(dateText(alert.created_at))}</div>${alert.is_read ? '' : `<button class="btn btn-sm btn-outline-success mt-3 align-self-start" data-read-alert="${alert.id}">Mark as read</button>`}</article></div>`;
+      const cropName = alert.crop_name || crop?.name || 'Crop';
+      const diseaseName = alert.disease_name || alert.title || 'High Risk Condition';
+      const riskLevel = alert.scan_risk_level || alert.severity || 'HIGH';
+      const severity = alert.scan_severity || alert.severity || 'SEVERE';
+      const riskClassStr = riskClass(riskLevel);
+      return `<div class="col-lg-6">
+        <article class="card panel-card p-4 h-100 ${alert.is_read ? 'opacity-75' : 'border-start border-danger border-4 shadow-sm'}">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <span class="badge ${alert.is_read ? 'text-bg-secondary' : 'text-bg-danger'} mb-1">${alert.is_read ? 'Read' : 'Active Warning'}</span>
+              <h2 class="h5 mb-0 fw-bold">${esc(diseaseName)}</h2>
+            </div>
+            <span class="risk-pill ${riskClassStr}">${esc(riskLevel)}</span>
+          </div>
+          <div class="text-muted small mb-2">
+            <strong>Crop:</strong> ${esc(cropName)} · <strong>Severity:</strong> ${esc(severity)}
+          </div>
+          <p class="mb-3 text-secondary">${esc(alert.message)}</p>
+          <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
+            <span class="small text-muted"><i class="far fa-clock me-1"></i>${esc(dateText(alert.created_at))}</span>
+            ${alert.is_read ? '<span class="small text-muted"><i class="fas fa-check-circle text-success me-1"></i>Acknowledged</span>' : `<button class="btn btn-sm btn-outline-success" data-read-alert="${alert.id}"><i class="fas fa-check me-1"></i>Mark as read</button>`}
+          </div>
+        </article>
+      </div>`;
     }).join('');
-    $('#alertsEmpty').hidden = alerts.length > 0;
   }
   $('#alertsList').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-read-alert]'); if (!button) return;
@@ -479,8 +553,8 @@
   });
   async function renderExpertCase(item) {
     const panel = $('#expertCaseDetail'); panel.hidden = false;
-    const weather = listValue(item.weather), risk = item.risk_level || '—';
-    panel.innerHTML = `<div class="d-flex justify-content-between"><div><span class="badge text-bg-light">${esc(item.kind)}</span><h2 class="h4 mt-2">${esc(item.name)}</h2></div><button class="btn-close" id="closeExpertCase" aria-label="Close case"></button></div><p>AI confidence: ${confidenceText(item.confidence)} · Risk: ${esc(risk)}</p><div class="alert alert-info">The backend does not currently expose stored upload images to expert clients. Image preview is unavailable through the implemented API.</div><h3 class="h6">Weather at scan</h3><p>${weather && Object.keys(weather).length ? esc(JSON.stringify(weather)) : 'Weather data unavailable.'}</p><h3 class="h6">Farmer note</h3><p>${esc(item.request_note || 'No note provided.')}</p><form id="expertReviewForm"><label class="form-label" for="expertResponse">Review and guidance</label><textarea id="expertResponse" class="form-control mb-3" rows="5" maxlength="4000" required placeholder="Provide clear, practical guidance. Refer the farmer to local agricultural services where needed."></textarea><button class="btn btn-success">Submit review</button></form>`;
+    const weather = objValue(item.weather), risk = item.risk_level || '—';
+    panel.innerHTML = `<div class="d-flex justify-content-between"><div><span class="badge text-bg-light">${esc(item.kind)}</span><h2 class="h4 mt-2">${esc(item.name)}</h2></div><button class="btn-close" id="closeExpertCase" aria-label="Close case"></button></div><p>AI confidence: ${confidenceText(item.confidence)} · Risk: ${esc(risk)}</p><div class="alert alert-info">The backend does not currently expose stored upload images to expert clients. Image preview is unavailable through the implemented API.</div><h3 class="h6">Weather at scan</h3>${formatWeatherBadge(weather)}<h3 class="h6">Farmer note</h3><p>${esc(item.request_note || 'No note provided.')}</p><form id="expertReviewForm"><label class="form-label" for="expertResponse">Review and guidance</label><textarea id="expertResponse" class="form-control mb-3" rows="5" maxlength="4000" required placeholder="Provide clear, practical guidance. Refer the farmer to local agricultural services where needed."></textarea><button class="btn btn-success">Submit review</button></form>`;
     panel.querySelector('.alert.alert-info')?.remove();
     const scanImage = document.createElement('img'); scanImage.id = 'expertScanImage'; scanImage.className = 'img-fluid rounded mb-3'; scanImage.alt = 'Farmer crop scan'; scanImage.hidden = true; scanImage.style.maxHeight = '360px';
     panel.insertBefore(scanImage, panel.children[1] || null);

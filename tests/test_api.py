@@ -197,6 +197,307 @@ class CropGuardAPITests(unittest.TestCase):
         self.assertIn("prediction_id", result.json())
         self.assertEqual(result.json()["model_name"], "cropguard-vision-engine")
 
+    def test_health_reflects_actual_configuration(self):
+        config.ENABLE_LOCAL_PREDICTOR = True
+        config.WEATHER_API_KEY = ""
+        health_unconfigured = self.client.get("/health").json()
+        self.assertEqual(health_unconfigured["database"], "connected")
+        self.assertEqual(health_unconfigured["weather_service"], "not_configured")
+        self.assertEqual(health_unconfigured["disease_ai"], "configured")
+        self.assertEqual(health_unconfigured["pest_ai"], "configured")
+        self.assertEqual(health_unconfigured["status"], "healthy")
+
+        config.WEATHER_API_KEY = "some-active-key"
+        health_configured = self.client.get("/health").json()
+        self.assertEqual(health_configured["weather_service"], "configured")
+
+    def test_weather_endpoints_unconfigured_and_configured(self):
+        config.WEATHER_API_KEY = ""
+        res_unconf = self.client.get("/api/weather", params={"location": "Tirunelveli"}).json()
+        self.assertFalse(res_unconf["available"])
+        self.assertIn("not configured", res_unconf["message"].lower())
+
+        test_w_unconf = self.client.get("/test-weather", params={"location": "Tirunelveli"}).json()
+        self.assertEqual(test_w_unconf["status"], "not_configured")
+
+        config.WEATHER_API_KEY = "test-weather-key"
+        _weather_cache.clear()
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "name": "Tirunelveli",
+            "main": {"temp": 31.5, "humidity": 82},
+            "weather": [{"description": "scattered clouds"}],
+            "wind": {"speed": 4.1},
+            "rain": {"1h": 1.2},
+        }
+        with patch("cropguard.main.requests.get", return_value=mock_resp):
+            res_conf = self.client.get("/api/weather", params={"location": "Tirunelveli"}).json()
+            self.assertTrue(res_conf["available"])
+            data = res_conf["weather_data"]
+            self.assertEqual(data["location"], "Tirunelveli")
+            self.assertEqual(data["temperature"], 31.5)
+            self.assertEqual(data["humidity"], 82)
+            self.assertEqual(data["wind_speed"], 4.1)
+            self.assertEqual(data["rainfall"], 1.2)
+            self.assertEqual(data["conditions"], "Scattered clouds")
+
+            test_w_conf = self.client.get("/test-weather", params={"location": "Tirunelveli"}).json()
+            self.assertEqual(test_w_conf["status"], "success")
+
+    def test_complete_scan_flow_with_tomato_leaf_weather_fallback_and_available(self):
+        headers = self.farmer()
+        crop = self.client.post("/api/crops", headers=headers, json={"name": "Tomato", "location": "Tirunelveli"}).json()
+        config.ENABLE_LOCAL_PREDICTOR = True
+
+        # Create a synthetic leaf image with brown spots to trigger Early Blight detection
+        leaf_img = Image.new("RGB", (100, 100), color=(34, 139, 34))  # green base
+        # Add brown/necrotic spot
+        for x in range(30, 60):
+            for y in range(30, 60):
+                leaf_img.putpixel((x, y), (139, 69, 19))
+        img_buf = BytesIO()
+        leaf_img.save(img_buf, format="JPEG")
+        image_bytes = img_buf.getvalue()
+
+        # 1. Scan with weather UNAVAILABLE (empty key)
+        config.WEATHER_API_KEY = ""
+        scan_no_weather = self.client.post(
+            "/api/scans",
+            headers=headers,
+            data={"crop_id": crop["id"], "cropType": "Tomato", "location": "Tirunelveli", "detection_type": "disease"},
+            files={"image": ("tomato_leaf.jpg", image_bytes, "image/jpeg")},
+        )
+        self.assertEqual(scan_no_weather.status_code, 200, scan_no_weather.text)
+        payload_no_w = scan_no_weather.json()
+        self.assertEqual(payload_no_w["status"], "success")
+        self.assertEqual(payload_no_w["disease_name"], "Early Blight")
+        self.assertFalse(payload_no_w["weather_available"])
+        self.assertIsNone(payload_no_w["weather"])
+        self.assertTrue(any("weather" in r.lower() and "unavailable" in r.lower() for r in payload_no_w["risk_reasons"]))
+
+        # Verify saved in scan history and PDF report can be generated
+        scan_id_1 = payload_no_w["prediction_id"]
+        detail_1 = self.client.get(f"/api/scans/{scan_id_1}", headers=headers).json()
+        self.assertEqual(detail_1["name"], "Early Blight")
+        pdf_1 = self.client.get(f"/api/scans/{scan_id_1}/report.pdf", headers=headers)
+        self.assertEqual(pdf_1.status_code, 200)
+        self.assertEqual(pdf_1.headers["content-type"], "application/pdf")
+
+        # 2. Scan with weather CONFIGURED and working
+        config.WEATHER_API_KEY = "test-weather-key"
+        _weather_cache.clear()
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "name": "Tirunelveli",
+            "main": {"temp": 28.0, "humidity": 85},
+            "weather": [{"description": "light rain"}],
+            "wind": {"speed": 3.0},
+            "rain": {"1h": 2.5},
+        }
+        with patch("cropguard.main.requests.get", return_value=mock_resp):
+            scan_with_weather = self.client.post(
+                "/api/scans",
+                headers=headers,
+                data={"crop_id": crop["id"], "cropType": "Tomato", "location": "Tirunelveli", "detection_type": "disease"},
+                files={"image": ("tomato_leaf.jpg", image_bytes, "image/jpeg")},
+            )
+        self.assertEqual(scan_with_weather.status_code, 200, scan_with_weather.text)
+        payload_w = scan_with_weather.json()
+        self.assertEqual(payload_w["status"], "success")
+        self.assertEqual(payload_w["disease_name"], "Early Blight")
+        self.assertTrue(payload_w["weather_available"])
+        self.assertIsNotNone(payload_w["weather"])
+        self.assertEqual(payload_w["weather"]["location"], "Tirunelveli")
+        self.assertEqual(payload_w["weather"]["humidity"], 85)
+        # Verify weather factors influenced risk
+        self.assertTrue(any("humidity" in r.lower() for r in payload_w["risk_reasons"]))
+        self.assertTrue(any("rainfall" in r.lower() for r in payload_w["risk_reasons"]))
+
+        # Verify saved in scan history and PDF report
+        scan_id_2 = payload_w["prediction_id"]
+        detail_2 = self.client.get(f"/api/scans/{scan_id_2}", headers=headers).json()
+        self.assertEqual(detail_2["name"], "Early Blight")
+        self.assertIsInstance(detail_2["weather"], dict)
+        self.assertEqual(detail_2["weather"]["location"], "Tirunelveli")
+
+        pdf_2 = self.client.get(f"/api/scans/{scan_id_2}/report.pdf", headers=headers)
+        self.assertEqual(pdf_2.status_code, 200)
+        self.assertEqual(pdf_2.headers["content-type"], "application/pdf")
+
+    def test_scan_persistence_ownership_and_history_retrieval(self):
+        """Verify scan persistence to DB, history loading, and user ownership isolation."""
+        farmer_a = self.farmer("farmer_a@test.org")
+        farmer_b = self.farmer("farmer_b@test.org")
+        config.ENABLE_LOCAL_PREDICTOR = True
+
+        crop_a = self.client.post("/api/crops", headers=farmer_a, json={"name": "Tomato", "location": "Madurai"}).json()
+
+        # Farmer B initially has empty history and empty alerts
+        empty_history_b = self.client.get("/api/history", headers=farmer_b).json()
+        self.assertEqual(len(empty_history_b), 0)
+        empty_alerts_b = self.client.get("/api/alerts", headers=farmer_b).json()
+        self.assertEqual(len(empty_alerts_b), 0)
+
+        # Farmer A performs a scan
+        leaf_img = Image.new("RGB", (100, 100), color=(34, 139, 34))
+        for x in range(30, 60):
+            for y in range(30, 60):
+                leaf_img.putpixel((x, y), (139, 69, 19))
+        img_buf = BytesIO()
+        leaf_img.save(img_buf, format="JPEG")
+
+        scan_res = self.client.post(
+            "/api/scans",
+            headers=farmer_a,
+            data={"crop_id": crop_a["id"], "cropType": "Tomato", "location": "Madurai", "detection_type": "disease"},
+            files={"image": ("tomato.jpg", img_buf.getvalue(), "image/jpeg")},
+        )
+        self.assertEqual(scan_res.status_code, 200)
+        scan_data = scan_res.json()
+        self.assertEqual(scan_data["status"], "success")
+        self.assertEqual(scan_data["disease_name"], "Early Blight")
+        scan_id = scan_data["prediction_id"]
+
+        # Farmer A retrieves history
+        history_a = self.client.get("/api/history", headers=farmer_a).json()
+        self.assertGreaterEqual(len(history_a), 1)
+        first_scan = next(s for s in history_a if s["id"] == scan_id)
+        self.assertEqual(first_scan["name"], "Early Blight")
+        self.assertEqual(first_scan["crop_id"], crop_a["id"])
+        self.assertEqual(first_scan["kind"], "disease")
+        self.assertIn("risk_level", first_scan)
+        self.assertIn("confidence", first_scan)
+
+        # Farmer B MUST NOT see Farmer A's scan (strict tenant isolation)
+        history_b = self.client.get("/api/history", headers=farmer_b).json()
+        self.assertEqual(len(history_b), 0)
+
+    def test_high_risk_alert_creation_and_no_alert_for_medium_risk(self):
+        """Verify alerts are created ONLY when risk is HIGH and properly joined with crop/scan details."""
+        farmer = self.farmer("farmer_alert@test.org")
+        config.ENABLE_LOCAL_PREDICTOR = True
+        crop = self.client.post("/api/crops", headers=farmer, json={"name": "Tomato", "location": "Coimbatore"}).json()
+
+        leaf_img = Image.new("RGB", (100, 100), color=(34, 139, 34))
+        for x in range(30, 60):
+            for y in range(30, 60):
+                leaf_img.putpixel((x, y), (139, 69, 19))
+        img_buf = BytesIO()
+        leaf_img.save(img_buf, format="JPEG")
+        image_bytes = img_buf.getvalue()
+
+        # 1. Medium risk scan (no weather / moderate weather) -> score = 30 -> MEDIUM -> NO alert
+        config.WEATHER_API_KEY = ""
+        scan_medium = self.client.post(
+            "/api/scans",
+            headers=farmer,
+            data={"crop_id": crop["id"], "cropType": "Tomato", "location": "Coimbatore", "detection_type": "disease"},
+            files={"image": ("leaf.jpg", image_bytes, "image/jpeg")},
+        ).json()
+        self.assertEqual(scan_medium["risk_level"].upper(), "MEDIUM")
+        alerts_1 = self.client.get("/api/alerts", headers=farmer).json()
+        self.assertEqual(len(alerts_1), 0)
+
+        # 2. High risk scan (weather with 85% humidity + rain) -> score >= 60 -> HIGH -> ALERT created
+        config.WEATHER_API_KEY = "test-key"
+        _weather_cache.clear()
+        mock_resp = Mock()
+        mock_resp.status_code = 200
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.return_value = {
+            "name": "Coimbatore",
+            "main": {"temp": 27.5, "humidity": 88},
+            "weather": [{"description": "heavy rain"}],
+            "wind": {"speed": 4.5},
+            "rain": {"1h": 5.0},
+        }
+        with patch("cropguard.main.requests.get", return_value=mock_resp):
+            scan_high = self.client.post(
+                "/api/scans",
+                headers=farmer,
+                data={"crop_id": crop["id"], "cropType": "Tomato", "location": "Coimbatore", "detection_type": "disease"},
+                files={"image": ("leaf.jpg", image_bytes, "image/jpeg")},
+            ).json()
+
+        self.assertEqual(scan_high["risk_level"].upper(), "HIGH")
+        alerts_2 = self.client.get("/api/alerts", headers=farmer).json()
+        self.assertEqual(len(alerts_2), 1)
+        alert = alerts_2[0]
+        self.assertEqual(alert["crop_id"], crop["id"])
+        self.assertEqual(alert["crop_name"], "Tomato")
+        self.assertEqual(alert["disease_name"], "Early Blight")
+        self.assertEqual(alert["severity"], "HIGH")
+        self.assertEqual(alert["is_read"], 0)
+
+        # Mark alert as read
+        read_res = self.client.put(f"/api/alerts/{alert['id']}/read", headers=farmer)
+        self.assertEqual(read_res.status_code, 200)
+        alerts_3 = self.client.get("/api/alerts", headers=farmer).json()
+        self.assertEqual(alerts_3[0]["is_read"], 1)
+
+    def test_weather_failure_does_not_break_scan(self):
+        """Verify OpenWeatherMap API failure gracefully falls back without breaking prediction or persistence."""
+        farmer = self.farmer("farmer_weather_err@test.org")
+        config.ENABLE_LOCAL_PREDICTOR = True
+        config.WEATHER_API_KEY = "test-key"
+        _weather_cache.clear()
+        crop = self.client.post("/api/crops", headers=farmer, json={"name": "Tomato", "location": "Salem"}).json()
+
+        leaf_img = Image.new("RGB", (100, 100), color=(34, 139, 34))
+        for x in range(30, 60):
+            for y in range(30, 60):
+                leaf_img.putpixel((x, y), (139, 69, 19))
+        img_buf = BytesIO()
+        leaf_img.save(img_buf, format="JPEG")
+
+        import requests
+        with patch("cropguard.main.requests.get", side_effect=requests.ConnectionError("Weather service down")):
+            res = self.client.post(
+                "/api/scans",
+                headers=farmer,
+                data={"crop_id": crop["id"], "cropType": "Tomato", "location": "Salem", "detection_type": "disease"},
+                files={"image": ("leaf.jpg", img_buf.getvalue(), "image/jpeg")},
+            )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["disease_name"], "Early Blight")
+        self.assertFalse(data["weather_available"])
+        self.assertIn("weather", data["weather_message"].lower())
+
+        # Verify scan was still saved to history despite weather failure
+        scan_id = data["prediction_id"]
+        detail = self.client.get(f"/api/scans/{scan_id}", headers=farmer)
+        self.assertEqual(detail.status_code, 200)
+
+    def test_frontend_language_selector_removed_and_empty_states_present(self):
+        """Verify UI contracts: English only, no languageSwitcher, professional empty states."""
+        html_file = config.STATIC_DIR / "index.html"
+        self.assertTrue(html_file.exists())
+        html_content = html_file.read_text(encoding="utf-8")
+
+        # Navbar language selector removed
+        self.assertNotIn('id="languageSwitcher"', html_content)
+        self.assertNotIn('class="language-selector"', html_content)
+
+        # Empty states exist with professional copy
+        self.assertIn('id="historyEmpty"', html_content)
+        self.assertIn("Your crop scans will appear here after you complete your first scan.", html_content)
+        self.assertIn('id="alertsEmpty"', html_content)
+        self.assertIn("No active alerts", html_content)
+        self.assertIn("High-risk crop conditions detected during your scans will appear here.", html_content)
+
+        # JS contracts
+        app_js = (config.STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("riskClass", app_js)
+        self.assertNotIn("$('#languageSwitcher')", app_js)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

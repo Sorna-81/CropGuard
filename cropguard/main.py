@@ -191,9 +191,19 @@ def health():
         database_status = "connected"
     except Exception:
         database_status = "unavailable"
-    disease_ai = "configured" if (config.ROBOFLOW_API_KEY and config.ROBOFLOW_MODEL_ID and config.ROBOFLOW_MODEL_VERSION) or config.ENABLE_LOCAL_PREDICTOR else "not_configured"
-    pest_ai = "configured" if (config.ROBOFLOW_API_KEY and config.ROBOFLOW_PEST_MODEL_ID and config.ROBOFLOW_PEST_MODEL_VERSION) or config.ENABLE_LOCAL_PREDICTOR else "not_configured"
-    return {"status": "healthy" if database_status == "connected" else "degraded", "database": database_status, "weather_service": "configured" if config.WEATHER_API_KEY else "not_configured", "disease_ai": disease_ai, "pest_ai": pest_ai}
+    weather_key = config.get_weather_api_key()
+    weather_service = "configured" if weather_key else "not_configured"
+    roboflow_disease = bool((config.ROBOFLOW_API_KEY or "").strip() and (config.ROBOFLOW_MODEL_ID or "").strip() and (config.ROBOFLOW_MODEL_VERSION or "").strip())
+    roboflow_pest = bool((config.ROBOFLOW_API_KEY or "").strip() and (config.ROBOFLOW_PEST_MODEL_ID or "").strip() and (config.ROBOFLOW_PEST_MODEL_VERSION or "").strip())
+    disease_ai = "configured" if (roboflow_disease or config.ENABLE_LOCAL_PREDICTOR) else "not_configured"
+    pest_ai = "configured" if (roboflow_pest or config.ENABLE_LOCAL_PREDICTOR) else "not_configured"
+    return {
+        "status": "healthy" if (database_status == "connected" and disease_ai == "configured") else "degraded",
+        "database": database_status,
+        "weather_service": weather_service,
+        "disease_ai": disease_ai,
+        "pest_ai": pest_ai,
+    }
 
 @app.get("/api/info")
 def info():
@@ -373,9 +383,15 @@ def remove_crop(crop_id: int, user=Depends(current_user)):
     if not cur.rowcount: raise HTTPException(404, "Crop not found")
     return {"success": True}
 
+_weather_cache = {}
+_weather_cache_lock = threading.Lock()
+
 def weather_for(location):
     location = (location or "").strip()
-    if not location or len(location) > 150 or any(ord(ch) < 32 for ch in location) or not config.WEATHER_API_KEY:
+    if not location or len(location) > 150 or any(ord(ch) < 32 for ch in location):
+        return None
+    api_key = config.get_weather_api_key()
+    if not api_key:
         return None
     cache_key = location.casefold()
     with _weather_cache_lock:
@@ -384,20 +400,85 @@ def weather_for(location):
         return dict(cached[1])
     try:
         response = None
-        for attempt in range(2):
-            try:
-                response = requests.get("https://api.openweathermap.org/data/2.5/weather", params={"q": location, "appid": config.WEATHER_API_KEY, "units": "metric"}, timeout=config.WEATHER_TIMEOUT_SECONDS)
-                if response.status_code >= 500 and attempt == 0:
+        candidates = [location]
+        cleaned_dist = re.sub(r"(?i)\s+district\b", "", location).strip()
+        if cleaned_dist and cleaned_dist not in candidates:
+            candidates.append(cleaned_dist)
+        if "," in location:
+            parts = [p.strip() for p in location.split(",") if p.strip()]
+            if parts:
+                first = parts[0]
+                first_clean = re.sub(r"(?i)\s+district\b", "", first).strip()
+                for c in (first, first_clean):
+                    if c and c not in candidates:
+                        candidates.append(c)
+                if len(parts) >= 2 and len(parts[-1]) == 2:
+                    code_cand = f"{first_clean},{parts[-1]}"
+                    if code_cand not in candidates:
+                        candidates.append(code_cand)
+
+        for loc_query in candidates:
+            if not loc_query:
+                continue
+            for attempt in range(2):
+                try:
+                    response = requests.get(
+                        "https://api.openweathermap.org/data/2.5/weather",
+                        params={"q": loc_query, "appid": api_key, "units": "metric"},
+                        timeout=config.WEATHER_TIMEOUT_SECONDS,
+                    )
+                    if response.status_code >= 500 and attempt == 0:
+                        time.sleep(0.1)
+                        continue
+                    if response.status_code == 200:
+                        break
+                    elif response.status_code == 404:
+                        break
+                    else:
+                        response.raise_for_status()
+                except (requests.Timeout, requests.ConnectionError):
+                    if attempt:
+                        raise
                     time.sleep(0.1)
-                    continue
-                response.raise_for_status()
+            if response and response.status_code == 200:
                 break
-            except (requests.Timeout, requests.ConnectionError):
-                if attempt:
-                    raise
-                time.sleep(0.1)
+
+        if not response or response.status_code != 200:
+            log.warning("Weather lookup failed or location not found for: %s", location)
+            return None
+
         data = response.json()
-        result = {"temperature": round(data["main"]["temp"], 1), "humidity": data["main"]["humidity"], "conditions": data["weather"][0]["description"], "wind_speed": round(data.get("wind", {}).get("speed", 0), 1), "rainfall": data.get("rain", {}).get("1h"), "location": data.get("name", location)}
+        main_data = data.get("main") or {}
+        wind_data = data.get("wind") or {}
+        weather_list = data.get("weather") or []
+
+        condition_desc = "Clear"
+        if weather_list and isinstance(weather_list, list) and len(weather_list) > 0:
+            condition_desc = weather_list[0].get("description", "Clear").capitalize()
+
+        rain_obj = data.get("rain") or {}
+        rainfall = None
+        if isinstance(rain_obj, dict):
+            rainfall = rain_obj.get("1h")
+            if rainfall is None:
+                rainfall = rain_obj.get("3h")
+        elif isinstance(rain_obj, (int, float)):
+            rainfall = float(rain_obj)
+        if rainfall is not None:
+            try:
+                rainfall = round(float(rainfall), 2)
+            except (ValueError, TypeError):
+                rainfall = None
+
+        result = {
+            "temperature": round(float(main_data.get("temp", 0)), 1),
+            "humidity": int(main_data.get("humidity", 0)),
+            "conditions": condition_desc,
+            "wind_speed": round(float(wind_data.get("speed", 0)), 1),
+            "rainfall": rainfall,
+            "location": data.get("name") or location,
+        }
+
         with _weather_cache_lock:
             _weather_cache[cache_key] = (time.monotonic(), result)
             if len(_weather_cache) > 256:
@@ -407,24 +488,43 @@ def weather_for(location):
                     oldest = min(_weather_cache, key=lambda key: _weather_cache[key][0])
                     _weather_cache.pop(oldest, None)
         return dict(result)
-    except Exception:
-        log.warning("Weather lookup failed")
+    except Exception as exc:
+        log.warning("Weather lookup failed for '%s' (%s)", location, type(exc).__name__)
         return None
 
-_weather_cache = {}
-_weather_cache_lock = threading.Lock()
-
 @app.get("/api/weather")
-def weather_endpoint(location: str):
+def weather_endpoint(location: str = Query("", description="City or district name")):
+    location = (location or "").strip()
+    if not config.get_weather_api_key():
+        return {
+            "success": False,
+            "available": False,
+            "message": "Weather service not configured. Add WEATHER_API_KEY in .env to include weather in risk estimates.",
+        }
+    if not location:
+        return {
+            "success": False,
+            "available": False,
+            "message": "Enter a valid location to check local weather.",
+        }
     data = weather_for(location)
     if data is None:
-        return {"success": False, "available": False, "message": "Weather is unavailable. Add a location and configure the weather service to include weather in risk estimates."}
+        return {
+            "success": False,
+            "available": False,
+            "message": f"Weather data is currently unavailable for '{location}'. Verify location name or check weather service status.",
+        }
     return {"success": True, "available": True, "weather_data": data, "timestamp": now()}
 
 @app.get("/test-weather")
-def test_weather(location: str):
+def test_weather(location: str = Query("Tirunelveli", description="City or district name")):
+    location = (location or "").strip()
+    if not config.get_weather_api_key():
+        return {"status": "not_configured", "message": "Weather service not configured"}
+    if not location:
+        return {"status": "unavailable", "message": "Location parameter is required"}
     data = weather_for(location)
-    return {"status": "success", "weather_data": data} if data else {"status": "unavailable", "message": "Weather service is unavailable or not configured"}
+    return {"status": "success", "weather_data": data} if data else {"status": "unavailable", "message": f"Weather service is unavailable or location '{location}' was not found"}
 
 @app.get("/test-roboflow")
 def test_roboflow():
@@ -441,14 +541,61 @@ def assess_risk(name, confidence, weather, previous_count=0):
     else:
         score += 30
         reasons.append("A disease or pest was detected")
-    if weather:
-        if weather["humidity"] >= 80: score += 25; reasons.append("High humidity may favor some crop diseases")
-        elif weather["humidity"] >= 65: score += 12; reasons.append("Moderate to high humidity may favor some crop diseases")
-        if weather["rainfall"] is not None and weather["rainfall"] > 0: score += 15; reasons.append("Recent rainfall can leave foliage wet")
-        if weather["temperature"] > 30 or weather["temperature"] < 10: score += 8; reasons.append("Temperature may stress some crops")
+
+    if weather and isinstance(weather, dict):
+        humidity = weather.get("humidity")
+        rainfall = weather.get("rainfall")
+        temperature = weather.get("temperature")
+        weather_factors_applied = False
+
+        if humidity is not None:
+            try:
+                hum = float(humidity)
+                if hum >= 80:
+                    score += 25
+                    reasons.append(f"High humidity ({round(hum)}%) favors fungal and bacterial disease spread")
+                    weather_factors_applied = True
+                elif hum >= 65:
+                    score += 12
+                    reasons.append(f"Moderate to high humidity ({round(hum)}%) may favor foliar pathogens")
+                    weather_factors_applied = True
+                else:
+                    reasons.append(f"Humidity ({round(hum)}%) is moderate to low, reducing disease pressure")
+            except (ValueError, TypeError):
+                pass
+
+        if rainfall is not None:
+            try:
+                rain = float(rainfall)
+                if rain > 0:
+                    score += 15
+                    reasons.append(f"Recent rainfall ({round(rain, 1)} mm) leaves foliage wet, increasing infection risk")
+                    weather_factors_applied = True
+            except (ValueError, TypeError):
+                pass
+
+        if temperature is not None:
+            try:
+                temp = float(temperature)
+                if temp > 30:
+                    score += 8
+                    reasons.append(f"High temperature ({round(temp, 1)} °C) may induce heat stress in crops")
+                    weather_factors_applied = True
+                elif temp < 10:
+                    score += 8
+                    reasons.append(f"Low temperature ({round(temp, 1)} °C) may cause cold stress or slow growth")
+                    weather_factors_applied = True
+            except (ValueError, TypeError):
+                pass
+
+        if not weather_factors_applied:
+            reasons.append("Current weather conditions are within normal ranges for crop health")
     else:
         reasons.append("Weather data unavailable; weather contribution was omitted")
-    if previous_count >= 2: score += 10; reasons.append("Repeated scans exist for this crop")
+
+    if previous_count >= 2:
+        score += 10
+        reasons.append("Repeated scans exist for this crop")
     score = min(score, 100)
     level = "HIGH" if score >= 60 else "MEDIUM" if score >= 30 else "LOW"
     return score, level, reasons
@@ -483,8 +630,6 @@ async def predict(image: UploadFile = File(...), cropType: str = Form(""), locat
             crop, location = row["name"], location or row["location"] or ""
     else:
         auth_uid = None
-    if config.SUPABASE_DATABASE_ENABLED and not uid:
-        raise HTTPException(401, "Sign in before saving a scan")
     model_id, model_version = ((config.ROBOFLOW_PEST_MODEL_ID, config.ROBOFLOW_PEST_MODEL_VERSION) if detection_type == "pest" else (config.ROBOFLOW_MODEL_ID, config.ROBOFLOW_MODEL_VERSION))
     allow_local = config.ENABLE_LOCAL_PREDICTOR
     provider = configured_provider(config.ROBOFLOW_API_KEY, model_id, model_version, allow_local_fallback=allow_local)
@@ -510,38 +655,72 @@ async def predict(image: UploadFile = File(...), cropType: str = Form(""), locat
     except Exception as exc:
         log.error("Crop image storage failed (%s)", type(exc).__name__)
         raise HTTPException(503, "Image storage is unavailable. The scan was not saved.")
-    weather = weather_for(location)
-    with connection() as db:
-        previous = db.execute("SELECT count(*) FROM crop_scans WHERE user_id=? AND crop_id IS ?", (uid, crop_id)).fetchone()[0] if uid else 0
-        score, risk, reasons = assess_risk(name, confidence, weather, previous)
-        severity = "LOW" if name.lower() == "healthy" else ("SEVERE" if risk == "HIGH" else "MODERATE")
-        cur = db.execute("INSERT INTO crop_scans(user_id,crop_id,filename,kind,name,confidence,severity,risk_level,risk_score,risk_reasons,weather,created_at,model_name,model_version,prediction_timestamp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (uid, crop_id, filename, detection_type, name, confidence, severity, risk, score, json.dumps(reasons), json.dumps(weather or {}), now(), prediction.model_name, prediction.model_version, prediction.prediction_timestamp))
-        scan_id = cur.lastrowid
-        if uid:
-            audit(db, uid, "scan_created", "scan", scan_id, {"kind": detection_type, "risk_level": risk})
-        if uid and risk == "HIGH":
-            title = "High crop health risk"
-            message = f"High estimated risk for {crop or 'your crop'}: {name}."
-            alert_type = ("weather_risk" if name.lower() == "healthy" else "disease_risk" if detection_type == "disease" else "pest_risk")
-            dedupe_crop = f"crop:{crop_id}" if crop_id else f"user:{uid}:unlinked:{crop.lower()}"
-            alert_cursor = db.execute("INSERT OR IGNORE INTO alerts(user_id,crop_id,message,created_at,alert_type,severity,title,scan_id,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?)", (uid, crop_id, message, now(), alert_type, "HIGH", title, scan_id, f"{dedupe_crop}:{alert_type}:{name.lower()}"))
-            if alert_cursor.rowcount:
-                audit(db, uid, "alert_generated", "scan", scan_id, {"kind": detection_type})
-                in_app_notifications.send(db, uid, title, message)
-        knowledge = db.execute("SELECT * FROM " + ("pests" if detection_type == "pest" else "diseases") + " WHERE lower(name)=lower(?)", (name,)).fetchone()
+    loc = (location or "").strip()
+    if not loc and crop_id:
+        try:
+            with connection() as db:
+                crop_row = db.execute("SELECT location FROM crops WHERE id=?", (crop_id,)).fetchone()
+                if crop_row and crop_row["location"]:
+                    loc = crop_row["location"].strip()
+        except Exception:
+            pass
+    weather = weather_for(loc)
+    weather_message = None
+    if not config.get_weather_api_key():
+        weather_message = "Weather service not configured. Add WEATHER_API_KEY in .env to include weather in risk estimates."
+    elif not loc:
+        weather_message = "No location provided for weather lookup."
+    elif weather is None:
+        weather_message = f"Weather data is currently unavailable for '{loc}'. Risk was calculated without weather data."
+
+    try:
+        with connection() as db:
+            previous = db.execute("SELECT count(*) FROM crop_scans WHERE user_id=? AND crop_id IS ?", (uid, crop_id)).fetchone()[0] if uid else 0
+            score, risk, reasons = assess_risk(name, confidence, weather, previous)
+            severity = "LOW" if name.lower() == "healthy" else ("SEVERE" if risk == "HIGH" else "MODERATE")
+            cur = db.execute("INSERT INTO crop_scans(user_id,crop_id,filename,kind,name,confidence,severity,risk_level,risk_score,risk_reasons,weather,created_at,model_name,model_version,prediction_timestamp) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (uid, crop_id, filename, detection_type, name, confidence, severity, risk, score, json.dumps(reasons), json.dumps(weather or {}), now(), prediction.model_name, prediction.model_version, prediction.prediction_timestamp))
+            scan_id = cur.lastrowid
+            if not scan_id:
+                raise RuntimeError("Failed to obtain scan record ID from database")
+            if uid:
+                audit(db, uid, "scan_created", "scan", scan_id, {"kind": detection_type, "risk_level": risk})
+            if uid and risk == "HIGH":
+                title = "High crop health risk"
+                message = f"High estimated risk for {crop or 'your crop'}: {name}."
+                alert_type = ("weather_risk" if name.lower() == "healthy" else "disease_risk" if detection_type == "disease" else "pest_risk")
+                dedupe_crop = f"crop:{crop_id}" if crop_id else f"user:{uid}:unlinked:{crop.lower()}"
+                alert_cursor = db.execute("INSERT OR IGNORE INTO alerts(user_id,crop_id,message,created_at,alert_type,severity,title,scan_id,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?)", (uid, crop_id, message, now(), alert_type, "HIGH", title, scan_id, f"{dedupe_crop}:{alert_type}:{name.lower()}:scan:{scan_id}"))
+                if alert_cursor.rowcount:
+                    audit(db, uid, "alert_generated", "scan", scan_id, {"kind": detection_type})
+                    in_app_notifications.send(db, uid, title, message)
+            knowledge = db.execute("SELECT * FROM " + ("pests" if detection_type == "pest" else "diseases") + " WHERE lower(name)=lower(?)", (name,)).fetchone()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.error("Crop scan persistence failed (%s)", type(exc).__name__)
+        raise HTTPException(500, "Scan analysis succeeded but could not be saved to your history. Please try again.")
+
     info = dict(knowledge) if knowledge else {"name": name, "symptoms": [], "prevention": [], "cultural_management": [], "biological_management": [], "chemical_management": ["Consult a local agricultural officer. Follow the label of any locally registered product."]}
     for key in ["crops", "symptoms", "causes", "favorable_conditions", "prevention", "cultural_management", "biological_management", "chemical_management", "severity_indicators"]:
         if key in info:
             try: info[key] = json.loads(info[key])
             except (ValueError, TypeError): pass
-    return {"status": "success", "prediction_id": scan_id, "filename": filename, "crop_type": crop, "type": detection_type, "disease_detected": name.lower() != "healthy" if detection_type == "disease" else None, "disease_name": name, "confidence": round(confidence, 4), "confidence_warning": "Low-confidence result. Please capture a clearer image or request expert review." if confidence < .55 else None, "severity": severity, "severity_basis": "Estimated from detection status and transparent weather risk rules; field damage was not visually measured.", "disease_info": info, "weather": weather, "weather_available": weather is not None, "risk_level": risk.lower(), "risk_score": score, "risk_reasons": reasons, "timestamp": now(), "model_name": prediction.model_name, "model_version": prediction.model_version, "prediction_timestamp": prediction.prediction_timestamp, "api_status": {"prediction_source": prediction.model_name}}
+    return {"status": "success", "prediction_id": scan_id, "filename": filename, "crop_type": crop, "type": detection_type, "disease_detected": name.lower() != "healthy" if detection_type == "disease" else None, "disease_name": name, "confidence": round(confidence, 4), "confidence_warning": "Low-confidence result. Please capture a clearer image or request expert review." if confidence < .55 else None, "severity": severity, "severity_basis": "Estimated from detection status and transparent weather risk rules; field damage was not visually measured.", "disease_info": info, "weather": weather, "weather_available": weather is not None, "weather_message": weather_message, "risk_level": risk.lower(), "risk_score": score, "risk_reasons": reasons, "timestamp": now(), "model_name": prediction.model_name, "model_version": prediction.model_version, "prediction_timestamp": prediction.prediction_timestamp, "api_status": {"prediction_source": prediction.model_name}}
 
 @app.get("/api/scans")
 @app.get("/api/history")
 def scans(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), user=Depends(current_user)):
     with connection() as db:
         rows = db.execute("SELECT * FROM crop_scans WHERE user_id=? ORDER BY id DESC LIMIT ? OFFSET ?", (user["id"], page_size, (page - 1) * page_size)).fetchall()
-    return [dict(r) for r in rows]
+    output = []
+    for r in rows:
+        item = dict(r)
+        for field in ("weather", "risk_reasons"):
+            if isinstance(item.get(field), str):
+                try: item[field] = json.loads(item[field])
+                except (ValueError, TypeError): pass
+        output.append(item)
+    return output
 
 @app.get("/api/recommendations")
 def scan_recommendations(scan_id: int = Query(..., ge=1), user=Depends(current_user)):
@@ -569,6 +748,10 @@ def scan_detail(scan_id: int, user=Depends(current_user)):
         reviews = db.execute("SELECT status,request_note,response,created_at,reviewed_at FROM expert_reviews WHERE scan_id=? ORDER BY id DESC", (scan_id,)).fetchall()
     if not row: raise HTTPException(404, "Scan not found")
     result = dict(row)
+    for field in ("weather", "risk_reasons"):
+        if isinstance(result.get(field), str):
+            try: result[field] = json.loads(result[field])
+            except (ValueError, TypeError): pass
     result["expert_reviews"] = [dict(r) for r in reviews]
     return result
 
@@ -700,14 +883,46 @@ def pest_detail(item_id: int):
 
 @app.get("/api/alerts")
 def alerts(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), user=Depends(current_user)):
-    with connection() as db: rows = db.execute("SELECT * FROM alerts WHERE user_id=? ORDER BY id DESC LIMIT ? OFFSET ?", (user["id"], page_size, (page - 1) * page_size)).fetchall()
-    return [dict(r) for r in rows]
+    with connection() as db:
+        rows = db.execute(
+            """
+            SELECT a.*, c.name AS crop_name, cs.name AS disease_name, cs.kind AS scan_kind,
+                   cs.severity AS scan_severity, cs.risk_level AS scan_risk_level, cs.confidence AS scan_confidence,
+                   cs.risk_reasons AS scan_risk_reasons
+            FROM alerts a
+            LEFT JOIN crops c ON a.crop_id = c.id
+            LEFT JOIN crop_scans cs ON a.scan_id = cs.id
+            WHERE a.user_id = ?
+            ORDER BY a.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (user["id"], page_size, (page - 1) * page_size)
+        ).fetchall()
+        result = []
+        for r in rows:
+            item = dict(r)
+            if isinstance(item.get("scan_risk_reasons"), str):
+                try:
+                    item["scan_risk_reasons"] = json.loads(item["scan_risk_reasons"])
+                except (ValueError, TypeError):
+                    pass
+            result.append(item)
+    return result
 
 @app.put("/api/alerts/{alert_id}/read")
 def mark_alert_read(alert_id: int, user=Depends(current_user)):
     with connection() as db: cur = db.execute("UPDATE alerts SET is_read=1 WHERE id=? AND user_id=?", (alert_id, user["id"]))
     if not cur.rowcount: raise HTTPException(404, "Alert not found")
     return {"success": True}
+
+@app.get("/api/notifications")
+def get_notifications(page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200), user=Depends(current_user)):
+    with connection() as db:
+        rows = db.execute(
+            "SELECT * FROM notifications WHERE user_id=? ORDER BY id DESC LIMIT ? OFFSET ?",
+            (user["id"], page_size, (page - 1) * page_size)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 @app.post("/api/scans/{scan_id}/expert-review")
 def request_review(scan_id: int, payload: dict = {}, user=Depends(current_user)):
