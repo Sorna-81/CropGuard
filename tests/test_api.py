@@ -23,6 +23,8 @@ class CropGuardAPITests(unittest.TestCase):
         config.ROBOFLOW_PEST_MODEL_ID = ""
         config.ROBOFLOW_PEST_MODEL_VERSION = ""
         config.WEATHER_API_KEY = ""
+        config.ENABLE_OPEN_METEO = False
+        config.ENABLE_LOCAL_PREDICTOR = False
         self.client_context = TestClient(app)
         self.client = self.client_context.__enter__()
 
@@ -182,6 +184,18 @@ class CropGuardAPITests(unittest.TestCase):
         self.assertEqual(admin_entry.status_code, 200, admin_entry.text)
         self.assertEqual(self.client.put(f"/api/admin/diseases/{admin_entry.json()['id']}", headers=headers, json={"scientific_name": "Test species"}).status_code, 200)
         self.assertEqual(self.client.delete(f"/api/admin/diseases/{admin_entry.json()['id']}", headers=headers).status_code, 200)
+
+    def test_local_prediction_provider(self):
+        headers = self.farmer()
+        crop = self.client.post("/api/crops", headers=headers, json={"name": "Tomato", "location": "Pune"}).json()
+        config.ENABLE_LOCAL_PREDICTOR = True
+        image = BytesIO()
+        Image.new("RGB", (64, 64), color="green").save(image, format="JPEG")
+        result = self.client.post("/api/predict", headers=headers, data={"crop_id": crop["id"]}, files={"image": ("leaf.jpg", image.getvalue(), "image/jpeg")})
+        self.assertEqual(result.status_code, 200, result.text)
+        self.assertEqual(result.json()["status"], "success")
+        self.assertIn("prediction_id", result.json())
+        self.assertEqual(result.json()["model_name"], "cropguard-vision-engine")
 
 
 if __name__ == "__main__":

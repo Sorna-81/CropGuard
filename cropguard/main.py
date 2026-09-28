@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -27,13 +28,19 @@ from PIL import Image, UnidentifiedImageError
 from . import config
 from .database import connection, initialize_database, reset_database_identity, set_database_identity
 from .services import supabase_auth
-from .services.prediction import configured_provider
+from .services.prediction import configured_provider, LocalPlantDiseasePredictor
 from .services.storage import image_storage
 from .services.notifications import in_app_notifications
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("cropguard")
-app = FastAPI(title="CropGuard", description="Crop disease and pest monitoring", version="2.0.0", docs_url="/api/docs", redoc_url="/api/redoc")
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    initialize_database()
+    yield
+
+app = FastAPI(title="CropGuard", description="Crop disease and pest monitoring", version="2.0.0", docs_url="/api/docs", redoc_url="/api/redoc", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=config.ALLOWED_ORIGINS, allow_credentials=True, allow_methods=["GET", "POST", "PUT", "DELETE"], allow_headers=["Authorization", "Content-Type"])
 config.UPLOAD_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR)), name="static")
@@ -176,10 +183,6 @@ def require_role(*roles):
         return user
     return dependency
 
-@app.on_event("startup")
-def startup():
-    initialize_database()
-
 @app.get("/health")
 def health():
     try:
@@ -188,7 +191,9 @@ def health():
         database_status = "connected"
     except Exception:
         database_status = "unavailable"
-    return {"status": "healthy" if database_status == "connected" else "degraded", "database": database_status, "weather_service": "configured" if config.WEATHER_API_KEY else "not_configured", "disease_ai": "configured" if config.ROBOFLOW_API_KEY and config.ROBOFLOW_MODEL_ID and config.ROBOFLOW_MODEL_VERSION else "not_configured", "pest_ai": "configured" if config.ROBOFLOW_API_KEY and config.ROBOFLOW_PEST_MODEL_ID and config.ROBOFLOW_PEST_MODEL_VERSION else "not_configured"}
+    disease_ai = "configured" if (config.ROBOFLOW_API_KEY and config.ROBOFLOW_MODEL_ID and config.ROBOFLOW_MODEL_VERSION) or config.ENABLE_LOCAL_PREDICTOR else "not_configured"
+    pest_ai = "configured" if (config.ROBOFLOW_API_KEY and config.ROBOFLOW_PEST_MODEL_ID and config.ROBOFLOW_PEST_MODEL_VERSION) or config.ENABLE_LOCAL_PREDICTOR else "not_configured"
+    return {"status": "healthy" if database_status == "connected" else "degraded", "database": database_status, "weather_service": "configured" if config.WEATHER_API_KEY else "not_configured", "disease_ai": disease_ai, "pest_ai": pest_ai}
 
 @app.get("/api/info")
 def info():
@@ -481,16 +486,22 @@ async def predict(image: UploadFile = File(...), cropType: str = Form(""), locat
     if config.SUPABASE_DATABASE_ENABLED and not uid:
         raise HTTPException(401, "Sign in before saving a scan")
     model_id, model_version = ((config.ROBOFLOW_PEST_MODEL_ID, config.ROBOFLOW_PEST_MODEL_VERSION) if detection_type == "pest" else (config.ROBOFLOW_MODEL_ID, config.ROBOFLOW_MODEL_VERSION))
-    provider = configured_provider(config.ROBOFLOW_API_KEY, model_id, model_version)
+    allow_local = config.ENABLE_LOCAL_PREDICTOR
+    provider = configured_provider(config.ROBOFLOW_API_KEY, model_id, model_version, allow_local_fallback=allow_local)
     if detection_type == "pest" and not provider.configured:
         return {"status": "unavailable", "message": "Pest detection model is not configured yet.", "type": "pest", "prediction_source": "none"}
     prediction = None
     if provider.configured:
         try:
-            prediction = provider.predict(content)
+            prediction = provider.predict(content, crop=crop, detection_type=detection_type)
         except Exception as exc:
             # Do not log provider URLs or exception messages; they may contain credentials.
             log.error("Prediction provider request failed (%s)", type(exc).__name__)
+            if allow_local and not isinstance(provider, LocalPlantDiseasePredictor):
+                try:
+                    prediction = LocalPlantDiseasePredictor().predict(content, crop=crop, detection_type=detection_type)
+                except Exception:
+                    pass
     if prediction is None:
         return {"status": "unavailable", "message": "Disease detection is not configured or the AI service is unavailable. No prediction was generated.", "type": detection_type, "prediction_source": "none"}
     name, confidence = prediction.class_name, prediction.confidence

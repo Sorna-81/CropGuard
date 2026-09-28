@@ -315,7 +315,7 @@
   $('#cropList').addEventListener('click', async (event) => {
     const button = event.target.closest('button[data-action]'); if (!button) return;
     const crop = state.crops.find((item) => item.id === Number(button.dataset.id)); if (!crop) return;
-    if (button.dataset.action === 'scan') { location.hash = '#scan'; setTimeout(() => { $('#scanCrop').value = String(crop.id); $('#scanLocation').value = crop.location || ''; }, 0); }
+    if (button.dataset.action === 'scan') { state.selectedCropId = crop.id; state.selectedCropLocation = crop.location || ''; location.hash = '#scan'; }
     if (button.dataset.action === 'edit') {
       $('#cropEditor').hidden = false; $('#cropFormHeading').textContent = `Edit ${crop.name}`; $('#cropEditId').value = crop.id;
       const values = { cropName: crop.name, cropVariety: crop.variety, cropSowingDate: crop.sowing_date, cropGrowthStage: crop.growth_stage, cropArea: crop.area, cropLocation: crop.location, cropSoil: crop.soil_type, cropIrrigation: crop.irrigation_type };
@@ -363,6 +363,11 @@
   });
   async function loadScanPage() {
     state.crops = await api.get('/api/crops'); populateCropSelect();
+    if (state.selectedCropId) {
+      $('#scanCrop').value = String(state.selectedCropId);
+      if (state.selectedCropLocation) $('#scanLocation').value = state.selectedCropLocation;
+      state.selectedCropId = null; state.selectedCropLocation = null;
+    }
     $('#scanResult').hidden = true;
     $('#scanMessage').className = 'alert alert-info';
     $('#scanMessage').textContent = state.crops.length ? 'Choose a crop and upload a clear image.' : 'Add a crop before scanning.';
