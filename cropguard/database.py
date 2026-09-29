@@ -66,10 +66,11 @@ class PostgresCursor:
         sql = re.sub(r"(?is)\s+IS\s+\?", " IS NOT DISTINCT FROM ?", sql)
         sql = sql.replace("?", "%s")
         is_insert = bool(re.match(r"(?is)^INSERT\s+INTO\s+", sql))
-        if is_insert and " RETURNING " not in sql.upper():
+        needs_returning = is_insert and " RETURNING " not in sql.upper() and not re.search(r"(?is)\bINSERT\s+INTO\s+(?:public\.)?audit_log\b", sql)
+        if needs_returning:
             sql += " RETURNING id"
         self.cursor.execute(sql, parameters)
-        if is_insert:
+        if is_insert and (" RETURNING " in sql.upper()):
             inserted = self.cursor.fetchone()
             self.lastrowid = inserted.get("id") if inserted else None
         return self
@@ -139,6 +140,9 @@ def connection():
                 raw.execute("SET LOCAL ROLE " + ("authenticated" if auth_uid else "anon"))
                 claims = {"sub": auth_uid, "role": "authenticated" if auth_uid else "anon"}
                 raw.execute("SELECT set_config('request.jwt.claims', %s, true)", (json.dumps(claims),))
+                if auth_uid:
+                    raw.execute("SELECT set_config('request.jwt.claim.sub', %s, true)", (str(auth_uid),))
+                    raw.execute("SELECT set_config('request.jwt.claim.role', %s, true)", ("authenticated",))
                 yield PostgresConnection(raw)
         finally:
             raw.close()

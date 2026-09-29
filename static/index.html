@@ -490,17 +490,93 @@
         
 
         .alert-card {
-
             border-left: 4px solid #dc3545;
-
             padding: 15px;
-
             margin-bottom: 20px;
-
             background-color: #ffe6e6;
-
             border-radius: 0 8px 8px 0;
+        }
 
+        /* Enhanced Alerts Hub Styles */
+        .alerts-hero-banner {
+            background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 45%, #1565c0 100%);
+            color: #ffffff;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            position: relative;
+            overflow: hidden;
+        }
+        .live-dot-pulse {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background-color: #ff3d00;
+            box-shadow: 0 0 0 0 rgba(255, 61, 0, 0.7);
+            animation: liveDotGlow 1.8s infinite;
+        }
+        @keyframes liveDotGlow {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 61, 0, 0.75); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(255, 61, 0, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 61, 0, 0); }
+        }
+        .banner-bg-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(55px);
+            pointer-events: none;
+            opacity: 0.28;
+        }
+        .orb-1 {
+            width: 260px;
+            height: 260px;
+            background: #00e676;
+            top: -60px;
+            right: -40px;
+        }
+        .orb-2 {
+            width: 220px;
+            height: 220px;
+            background: #ff9100;
+            bottom: -50px;
+            left: 25%;
+        }
+        .alert-card-special {
+            transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            position: relative;
+            border-radius: 12px;
+        }
+        .alert-card-special:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08) !important;
+        }
+        .alert-card-special.unread {
+            border-left: 5px solid #dc3545 !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fffbfb 100%);
+        }
+        .alert-card-special.read {
+            border-left: 5px solid #198754 !important;
+            opacity: 0.94;
+        }
+        .emergency-protocol-box {
+            background-color: #f7faf7;
+            border: 1px dashed #b2dfdb;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .empty-glow-circle {
+            width: 86px;
+            height: 86px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(46, 125, 50, 0.16) 0%, rgba(46, 125, 50, 0.02) 70%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid rgba(46, 125, 50, 0.25);
+        }
+        .alert-tab.active {
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.25);
         }
 
         
@@ -635,11 +711,149 @@
 <section id="page-login" class="app-view"><div class="container" style="max-width:560px"><div class="card panel-card p-4 p-md-5"><h1 class="page-title h2">Welcome back</h1><p class="text-muted">Sign in to see your crops and scans.</p><form id="loginForm"><label class="form-label" for="loginEmail">Email</label><input class="form-control mb-3" id="loginEmail" type="email" autocomplete="username" required><label class="form-label" for="loginPassword">Password</label><input class="form-control mb-3" id="loginPassword" type="password" autocomplete="current-password" required><button class="btn btn-success w-100" type="submit">Log in</button></form><button class="btn btn-link px-0 mt-2" type="button" id="showPasswordReset">Forgot password?</button><form id="passwordResetForm" class="mt-2" hidden><label class="form-label" for="resetEmail">Email for reset instructions</label><input class="form-control mb-2" id="resetEmail" type="email" required><button class="btn btn-outline-success" type="submit">Send reset instructions</button></form><form id="updatePasswordForm" class="mt-3" hidden><label class="form-label" for="newPassword">New password</label><input class="form-control mb-2" id="newPassword" type="password" minlength="10" autocomplete="new-password" required><button class="btn btn-success" type="submit">Update password</button></form><p class="mt-3 mb-0">New to CropGuard? <a href="#register">Create an account</a></p></div></div></section>
 <section id="page-register" class="app-view"><div class="container" style="max-width:560px"><div class="card panel-card p-4 p-md-5"><h1 class="page-title h2">Create farmer account</h1><p class="text-muted">Your account is private to you. Add approximate farm location in your profile.</p><form id="registerForm"><label class="form-label" for="registerName">Full name</label><input class="form-control mb-3" id="registerName" autocomplete="name" required maxlength="120"><label class="form-label" for="registerEmail">Email</label><input class="form-control mb-3" id="registerEmail" type="email" autocomplete="email" required><label class="form-label" for="registerPassword">Password</label><input class="form-control mb-3" id="registerPassword" type="password" minlength="10" autocomplete="new-password" required><div class="form-text mb-3">Use at least 10 characters.</div><button class="btn btn-success w-100" type="submit">Create account</button></form><p class="mt-3 mb-0">Already registered? <a href="#login">Log in</a></p></div></div></section>
 <section id="page-dashboard" class="app-view"><div class="container"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4"><div><p class="text-success fw-semibold mb-1">FARMER WORKSPACE</p><h1 class="page-title h2 mb-1">Your crop dashboard</h1><p class="text-muted mb-0" id="dashboardGreeting">Your crops and recent field observations.</p></div><a class="btn btn-success" href="#scan"><i class="fas fa-camera me-2"></i>Scan a crop</a></div><div class="row g-3 mb-4"><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">My crops</div><div class="stat-number" id="myCropCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">Scans loaded (up to 200)</div><div class="stat-number" id="myScanCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">Unread alerts</div><div class="stat-number" id="myAlertCount">0</div></div></div><div class="col-6 col-lg-3"><div class="card stat-card p-3"><div class="text-muted">High risk in loaded scans</div><div class="stat-number" id="myHighRiskCount">0</div></div></div></div><div class="row g-4"><div class="col-lg-7"><div class="card panel-card p-4 h-100"><div class="d-flex justify-content-between"><h2 class="h5">My crops</h2><a href="#crops">Manage crops</a></div><div id="dashboardCrops" class="row g-3"><p class="text-muted">Loading crops...</p></div></div></div><div class="col-lg-5"><div class="card panel-card p-4 h-100"><div class="d-flex justify-content-between"><h2 class="h5">Recent scans</h2><a href="#history">View history</a></div><div id="dashboardScans"><p class="text-muted">Loading scan history...</p></div></div></div></div></div></section>
-<section id="page-profile" class="app-view"><div class="container" style="max-width:900px"><h1 class="page-title h2">Farmer profile</h1><p class="text-muted">Use approximate village or district details. Precise coordinates are not required.</p><div class="card panel-card p-4"><form id="profileForm" class="row g-3"><div class="col-md-6"><label class="form-label" for="profileName">Full name</label><input id="profileName" class="form-control" maxlength="120"></div><div class="col-md-6"><label class="form-label" for="profileEmail">Email</label><input id="profileEmail" class="form-control" type="email" readonly></div><div class="col-md-6"><label class="form-label" for="profileMobile">Mobile</label><input id="profileMobile" class="form-control" type="tel" maxlength="30"></div><div class="col-md-6"><label class="form-label" for="profileLanguage">Preferred language</label><input id="profileLanguage" class="form-control" value="English" readonly></div><div class="col-md-4"><label class="form-label" for="profileState">State</label><input id="profileState" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileDistrict">District</label><input id="profileDistrict" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileVillage">Village / location</label><input id="profileVillage" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileArea">Farm area</label><input id="profileArea" class="form-control" type="number" min="0" step="0.01"></div><div class="col-md-4"><label class="form-label" for="profileSoil">Soil type</label><input id="profileSoil" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileIrrigation">Irrigation</label><input id="profileIrrigation" class="form-control"></div><div class="col-12"><button class="btn btn-success" type="submit">Save profile</button></div></form></div></div></section>
+<section id="page-profile" class="app-view"><div class="container" style="max-width:900px"><h1 class="page-title h2">Farmer profile</h1><p class="text-muted">Use approximate village or district details. Precise coordinates are not required.</p><div class="card panel-card p-4"><form id="profileForm" class="row g-3"><div class="col-md-6"><label class="form-label" for="profileName">Full name</label><input id="profileName" class="form-control" maxlength="120"></div><div class="col-md-6"><label class="form-label" for="profileEmail">Email</label><input id="profileEmail" class="form-control" type="email" readonly></div><div class="col-12"><label class="form-label" for="profileMobile">Mobile</label><input id="profileMobile" class="form-control" type="tel" maxlength="30"></div><input id="profileLanguage" type="hidden" value="English"><div class="col-md-4"><label class="form-label" for="profileState">State</label><input id="profileState" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileDistrict">District</label><input id="profileDistrict" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileVillage">Village / location</label><input id="profileVillage" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileArea">Farm area</label><input id="profileArea" class="form-control" type="number" min="0" step="0.01"></div><div class="col-md-4"><label class="form-label" for="profileSoil">Soil type</label><input id="profileSoil" class="form-control"></div><div class="col-md-4"><label class="form-label" for="profileIrrigation">Irrigation</label><input id="profileIrrigation" class="form-control"></div><div class="col-12"><button class="btn btn-success" type="submit">Save profile</button></div></form></div></div></section>
 <section id="page-crops" class="app-view"><div class="container"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-4"><div><h1 class="page-title h2">Crop management</h1><p class="text-muted">Register crops to connect scans, risk, and growing history.</p></div><button class="btn btn-success" id="newCropBtn"><i class="fas fa-plus me-2"></i>Add crop</button></div><div id="cropEditor" class="card panel-card p-4 mb-4" hidden><h2 class="h5" id="cropFormHeading">Add a crop</h2><form id="cropForm" class="row g-3"><input type="hidden" id="cropEditId"><div class="col-md-4"><label class="form-label" for="cropName">Crop</label><input class="form-control" id="cropName" list="cropSuggestions" required maxlength="80"><datalist id="cropSuggestions"><option>Tomato</option><option>Potato</option><option>Rice</option><option>Wheat</option><option>Maize</option><option>Cotton</option><option>Soybean</option><option>Sugarcane</option><option>Onion</option><option>Chilli</option></datalist></div><div class="col-md-4"><label class="form-label" for="cropVariety">Variety</label><input class="form-control" id="cropVariety"></div><div class="col-md-4"><label class="form-label" for="cropSowingDate">Sowing date</label><input class="form-control" id="cropSowingDate" type="date"></div><div class="col-md-4"><label class="form-label" for="cropGrowthStage">Growth stage</label><select id="cropGrowthStage" class="form-select"><option value="">Select stage</option><option>Seedling</option><option>Vegetative</option><option>Flowering</option><option>Fruiting</option><option>Maturity</option><option>Harvest</option></select></div><div class="col-md-4"><label class="form-label" for="cropArea">Area</label><input class="form-control" id="cropArea" type="number" min="0" step="0.01"></div><div class="col-md-4"><label class="form-label" for="cropLocation">Location</label><input class="form-control" id="cropLocation" placeholder="Village or district"></div><div class="col-md-4"><label class="form-label" for="cropSoil">Soil type</label><input class="form-control" id="cropSoil"></div><div class="col-md-4"><label class="form-label" for="cropIrrigation">Irrigation type</label><input class="form-control" id="cropIrrigation"></div><div class="col-12 d-flex gap-2"><button class="btn btn-success" type="submit">Save crop</button><button class="btn btn-outline-secondary" type="button" id="cancelCropBtn">Cancel</button></div></form></div><div id="cropList" class="row g-3"><p class="text-muted">Loading crops...</p></div><div id="cropTimeline" class="card panel-card p-4 mt-4" hidden></div></div></section>
 <section id="page-scan" class="app-view"><div class="container" style="max-width:1050px"><h1 class="page-title h2">Scan a crop</h1><p class="text-muted">Choose a registered crop, then upload or capture a clear leaf image. AI results depend on the configured model.</p><div class="row g-4"><div class="col-lg-5"><div class="card panel-card p-4"><form id="scanForm"><label class="form-label" for="scanCrop">Select crop</label><select class="form-select mb-3" id="scanCrop" required><option value="">Choose one of your crops</option></select><label class="form-label" for="scanType">Analysis type</label><select class="form-select mb-3" id="scanType"><option value="disease">Disease detection</option><option value="pest">Pest detection</option></select><label class="form-label" for="scanLocation">Approximate location for weather</label><input class="form-control mb-2" id="scanLocation" placeholder="Village or district (optional)"><button class="btn btn-sm btn-outline-success mb-3" type="button" id="checkWeatherBtn">Check local weather</button><div id="scanWeatherInfo" class="small text-muted mb-3" aria-live="polite"></div><label class="drop-zone d-block p-4 text-center mb-3" for="scanImage"><i class="fas fa-camera fa-2x text-success mb-2"></i><span class="d-block fw-semibold">Upload or take a photo</span><span class="small text-muted">JPG, PNG, WEBP - maximum 5 MB</span></label><input class="form-control" id="scanImage" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required><img id="scanPreview" class="preview-image rounded mt-3" alt="Preview of selected crop image" hidden><button class="btn btn-success btn-lg w-100 mt-4" type="submit" id="analyzeCropBtn"><i class="fas fa-magnifying-glass me-2"></i>Analyze crop</button></form><div id="scanProgress" class="mt-4" hidden aria-live="polite"><p class="fw-semibold mb-2">Analysis in progress</p><ol class="mb-0"><li data-progress="upload">Uploading image...</li><li data-progress="analysis">Analyzing...</li><li data-progress="weather">Checking weather...</li><li data-progress="risk">Calculating risk...</li></ol></div></div></div><div class="col-lg-7"><div id="scanMessage" class="alert alert-info">Your result and recommendations will appear here.</div><div id="scanResult" class="card panel-card p-4" hidden></div></div></div></div></section>
 <section id="page-history" class="app-view"><div class="container"><h1 class="page-title h2">Scan history</h1><p class="text-muted">Your latest 200 saved crop observations and expert review status.</p><div class="card panel-card p-3"><div id="historyTableContainer" class="table-responsive"><table class="table table-hover align-middle mb-0"><thead><tr><th>Date</th><th>Crop</th><th>Detection</th><th>Type</th><th>Confidence</th><th>Severity</th><th>Risk</th><th>Status</th><th></th></tr></thead><tbody id="historyRows"></tbody></table></div><div id="historyEmpty" class="card panel-card p-5 text-center my-3 border-0" hidden><div class="mb-3"><i class="fas fa-clipboard-list fa-3x text-muted opacity-50"></i></div><h2 class="h5 fw-semibold text-secondary">No crop scans found</h2><p class="text-muted mx-auto mb-3" style="max-width:440px">Your crop scans will appear here after you complete your first scan.</p><div><a class="btn btn-outline-success btn-sm" href="#scan"><i class="fas fa-camera me-1"></i>Start a new scan</a></div></div></div><div id="historyDetail" class="card panel-card p-4 mt-4" hidden></div></div></section>
-<section id="page-alerts" class="app-view"><div class="container"><div class="d-flex justify-content-between align-items-center mb-3"><div><h1 class="page-title h2 mb-1">Alerts</h1><p class="text-muted mb-0">High-risk alerts created from your saved crop scans.</p></div></div><div id="alertsEmpty" class="card panel-card p-5 text-center my-3" hidden><div class="mb-3"><i class="fas fa-shield-alt fa-3x text-success opacity-75"></i></div><h2 class="h5 fw-semibold">No active alerts</h2><p class="text-muted mx-auto mb-3" style="max-width:480px">High-risk crop conditions detected during your scans will appear here.</p><div><a class="btn btn-outline-success btn-sm" href="#scan"><i class="fas fa-camera me-1"></i>Scan a crop</a></div></div><div id="alertsList" class="row g-3"></div></div></section>
+<section id="page-alerts" class="app-view"><div class="container">
+  <!-- Alerts Hero Header -->
+  <div class="alerts-hero-banner p-4 p-md-5 mb-4 rounded-4 shadow-sm position-relative overflow-hidden">
+    <div class="row align-items-center position-relative" style="z-index: 2;">
+      <div class="col-lg-8">
+        <div class="d-inline-flex align-items-center gap-2 px-3 py-1 mb-3 rounded-pill bg-white bg-opacity-25 text-white border border-white border-opacity-25 small fw-semibold">
+          <span class="live-dot-pulse"></span>
+          <span>FIELD BIOPROTECTION DISPATCH</span>
+        </div>
+        <h1 class="page-title display-6 fw-bold text-white mb-2">Crop Threat & Health Alerts</h1>
+        <p class="text-white text-opacity-75 mb-3 fs-6" style="max-width: 620px;">
+          Active surveillance tracking high-risk pathogens, humidity/weather escalations, and automated containment advisories created from your saved crop scans.
+        </p>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-light text-success fw-semibold shadow-sm" href="#scan"><i class="fas fa-camera me-2"></i>Scan a crop</a>
+          <button class="btn btn-outline-light" id="markAllAlertsReadBtn" type="button"><i class="fas fa-check-double me-2"></i>Mark all as read</button>
+          <a class="btn btn-outline-light" href="#history"><i class="fas fa-clock-rotate-left me-2"></i>Scan history</a>
+        </div>
+      </div>
+      <div class="col-lg-4 mt-4 mt-lg-0 text-lg-end">
+        <div class="d-inline-block text-start p-3 rounded-3 bg-white bg-opacity-15 border border-white border-opacity-25 text-white shadow-sm">
+          <div class="d-flex align-items-center gap-3">
+            <div class="text-center" style="width: 48px;">
+              <i class="fas fa-shield-virus fa-2x" id="alertsShieldIcon"></i>
+            </div>
+            <div>
+              <div class="small text-white-50 text-uppercase fw-bold">Field Bio-Status</div>
+              <div class="fw-bold fs-5" id="alertsStatusText">Evaluating...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="banner-bg-orb orb-1"></div>
+    <div class="banner-bg-orb orb-2"></div>
+  </div>
+
+  <!-- Quick KPI Bar -->
+  <div class="row g-3 mb-4" id="alertsMetricsBar">
+    <div class="col-6 col-md-3">
+      <div class="card panel-card p-3 h-100 border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="text-muted small fw-semibold">Active Warnings</span>
+          <span class="badge bg-danger-subtle text-danger rounded-pill px-2 py-1"><i class="fas fa-bell"></i></span>
+        </div>
+        <div class="d-flex align-items-baseline gap-2">
+          <div class="stat-number text-danger" id="alertsActiveCount">0</div>
+          <span class="small text-danger fw-semibold" id="alertsActiveBadge" hidden>Requires Action</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card panel-card p-3 h-100 border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="text-muted small fw-semibold">Crops Impacted</span>
+          <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill px-2 py-1"><i class="fas fa-seedling"></i></span>
+        </div>
+        <div class="stat-number text-warning-emphasis" id="alertsCropsCount">0</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card panel-card p-3 h-100 border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="text-muted small fw-semibold">Acknowledged</span>
+          <span class="badge bg-success-subtle text-success rounded-pill px-2 py-1"><i class="fas fa-check-circle"></i></span>
+        </div>
+        <div class="stat-number text-success" id="alertsReadCount">0</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card panel-card p-3 h-100 border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="text-muted small fw-semibold">Total Escalations</span>
+          <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-1"><i class="fas fa-triangle-exclamation"></i></span>
+        </div>
+        <div class="stat-number text-dark" id="alertsTotalCount">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter & Search Toolbar -->
+  <div class="card panel-card p-3 mb-4 shadow-sm border-0">
+    <div class="row g-2 align-items-center">
+      <div class="col-md-6 d-flex gap-2 flex-wrap" id="alertFilterTabs">
+        <button class="btn btn-sm btn-success fw-semibold alert-tab active" data-alert-filter="all" type="button">All Alerts (<span id="tabCountAll">0</span>)</button>
+        <button class="btn btn-sm btn-outline-danger fw-semibold alert-tab" data-alert-filter="unread" type="button">🚨 Active (<span id="tabCountUnread">0</span>)</button>
+        <button class="btn btn-sm btn-outline-secondary fw-semibold alert-tab" data-alert-filter="read" type="button">✅ Acknowledged (<span id="tabCountRead">0</span>)</button>
+      </div>
+      <div class="col-md-6">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white text-muted border-end-0"><i class="fas fa-search"></i></span>
+          <input type="text" id="alertsSearchInput" class="form-control border-start-0" placeholder="Filter by crop name or disease condition...">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty State (Contract Compliant) -->
+  <div id="alertsEmpty" class="card panel-card p-5 text-center my-4 border-0 shadow-sm rounded-4" hidden>
+    <div class="empty-glow-circle mx-auto mb-3">
+      <i class="fas fa-shield-alt fa-3x text-success"></i>
+    </div>
+    <h2 class="h4 fw-bold text-success mb-2">No active alerts</h2>
+    <p class="text-muted mx-auto mb-4" style="max-width:520px">
+      High-risk crop conditions detected during your scans will appear here. All registered crops are currently within baseline health parameters.
+    </p>
+    <div class="row g-3 text-start mx-auto mb-4" style="max-width: 780px;">
+      <div class="col-md-4">
+        <div class="p-3 rounded-3 bg-light border h-100">
+          <div class="text-success fw-bold small mb-1"><i class="fas fa-droplet me-1"></i> Moisture Check</div>
+          <div class="small text-muted">Keep foliage dry during dusk; sustained leaf moisture accelerates fungal spore germination.</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="p-3 rounded-3 bg-light border h-100">
+          <div class="text-success fw-bold small mb-1"><i class="fas fa-eye me-1"></i> Canopy Scouting</div>
+          <div class="small text-muted">Examine undersides of lower leaves weekly for early lesion spots, blight margins, or mites.</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="p-3 rounded-3 bg-light border h-100">
+          <div class="text-success fw-bold small mb-1"><i class="fas fa-cloud-sun me-1"></i> Weather Vigilance</div>
+          <div class="small text-muted">Warm, humid forecasts trigger risk flags. Run a preemptive scan before rainfall.</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <a class="btn btn-success btn-lg px-4 shadow-sm" href="#scan"><i class="fas fa-camera me-2"></i>Scan a crop</a>
+    </div>
+  </div>
+
+  <!-- Filtered 0-match Message -->
+  <div id="alertsFilteredEmpty" class="card panel-card p-4 text-center my-3 border-0 shadow-sm" hidden>
+    <p class="text-muted mb-0"><i class="fas fa-info-circle me-1"></i> No alerts match your current search or filter criteria.</p>
+  </div>
+
+  <!-- Alerts List Grid -->
+  <div id="alertsList" class="row g-3"></div>
+</div></section>
 <section id="page-expert" class="app-view" data-restricted="EXPERT,ADMIN"><div class="container"><h1 class="page-title h2">Expert workspace</h1><p class="text-muted">Review farmer-submitted crop cases.</p><div id="expertCases" class="row g-3"></div><p id="expertEmpty" class="text-muted" hidden>No pending expert cases.</p><div id="expertCaseDetail" class="card panel-card p-4 mt-4" hidden></div></div></section>
 <section id="page-admin" class="app-view" data-restricted="ADMIN"><div class="container"><h1 class="page-title h2">Administration</h1><p class="text-muted">Live platform counts and knowledge base management.</p><div class="row g-3 mb-4" id="adminMetrics"></div><div class="row g-4"><div class="col-lg-6"><div class="card panel-card p-4"><h2 class="h5">Farmers</h2><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Name</th><th>Email</th><th>District</th></tr></thead><tbody id="adminFarmers"></tbody></table></div><p id="adminFarmersEmpty" class="text-muted" hidden>No data yet.</p></div></div><div class="col-lg-6"><div class="card panel-card p-4"><h2 class="h5">Recent scans</h2><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Finding</th><th>Type</th><th>Risk</th></tr></thead><tbody id="adminScans"></tbody></table></div><p id="adminScansEmpty" class="text-muted" hidden>No data yet.</p></div></div></div><div class="card panel-card p-4 mt-4"><div class="d-flex justify-content-between flex-wrap gap-2"><div><h2 class="h5">Disease and pest knowledge</h2><p class="text-muted small">Only admins can change published entries.</p></div><button class="btn btn-success btn-sm" id="newKnowledgeBtn">Add entry</button></div><div class="row g-3"><div class="col-md-4"><label class="form-label" for="knowledgeKind">Type</label><select id="knowledgeKind" class="form-select"><option value="diseases">Disease</option><option value="pests">Pest</option></select></div><div class="col-md-4"><label class="form-label" for="knowledgeSelect">Entry</label><select id="knowledgeSelect" class="form-select"></select></div><div class="col-md-4 d-flex align-items-end gap-2"><button id="editKnowledgeBtn" class="btn btn-outline-success" type="button">Edit selected</button><button id="deleteKnowledgeBtn" class="btn btn-outline-danger" type="button">Delete</button></div></div><form id="knowledgeForm" class="row g-3 mt-2" hidden><input id="knowledgeId" type="hidden"><div class="col-md-6"><label class="form-label" for="knowledgeName">Name</label><input id="knowledgeName" class="form-control" required></div><div class="col-md-6"><label class="form-label" for="knowledgeScientific">Scientific name</label><input id="knowledgeScientific" class="form-control"></div><div class="col-md-6"><label class="form-label" for="knowledgeSymptoms">Symptoms (one per line)</label><textarea id="knowledgeSymptoms" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgePrevention">Prevention (one per line)</label><textarea id="knowledgePrevention" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgeCultural">Cultural management (one per line)</label><textarea id="knowledgeCultural" class="form-control" rows="3"></textarea></div><div class="col-md-6"><label class="form-label" for="knowledgeBiological">Biological management (one per line)</label><textarea id="knowledgeBiological" class="form-control" rows="3"></textarea></div><div class="col-12"><label class="form-label" for="knowledgeChemical">Chemical management (one per line; label and local expert advice required)</label><textarea id="knowledgeChemical" class="form-control" rows="3"></textarea></div><div class="col-12 d-flex gap-2"><button class="btn btn-success" type="submit">Save entry</button><button class="btn btn-outline-secondary" id="cancelKnowledgeBtn" type="button">Cancel</button></div></form><div id="knowledgeList" class="row g-2 mt-2"></div></div><div id="adminAnalytics" class="card panel-card p-4 mt-4"><h2 class="h5">Scan analytics</h2><p class="text-muted">Risk distribution among the latest 500 returned scans.</p><div id="analyticsSummary" class="d-flex gap-3 flex-wrap"></div></div></div></section>
 </main>

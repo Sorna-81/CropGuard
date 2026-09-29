@@ -142,6 +142,7 @@ def current_user(authorization: Optional[str] = Header(None), request: Request =
             provider_user = supabase_auth.verify(authorization[7:])
         if not provider_user:
             raise HTTPException(401, "Invalid or expired session")
+        identity = set_database_identity(provider_user["id"])
         try:
             with connection() as db:
                 row = db.execute("SELECT id,email,role,auth_uid FROM users WHERE auth_uid=?", (provider_user["id"],)).fetchone()
@@ -155,6 +156,8 @@ def current_user(authorization: Optional[str] = Header(None), request: Request =
         except Exception as exc:
             log.error("Supabase user profile lookup failed (%s, SQLSTATE=%s)", type(exc).__name__, getattr(exc, "sqlstate", "unknown"))
             raise HTTPException(503, "Unable to load your account profile")
+        finally:
+            reset_database_identity(identity)
     try:
         token = authorization[7:]
         head, payload, signature = token.split(".")
@@ -192,7 +195,8 @@ def health():
     except Exception:
         database_status = "unavailable"
     weather_key = config.get_weather_api_key()
-    weather_service = "configured" if weather_key else "not_configured"
+    weather_configured = bool(weather_key or getattr(config, "ENABLE_OPEN_METEO", False))
+    weather_service = "configured" if weather_configured else "not_configured"
     roboflow_disease = bool((config.ROBOFLOW_API_KEY or "").strip() and (config.ROBOFLOW_MODEL_ID or "").strip() and (config.ROBOFLOW_MODEL_VERSION or "").strip())
     roboflow_pest = bool((config.ROBOFLOW_API_KEY or "").strip() and (config.ROBOFLOW_PEST_MODEL_ID or "").strip() and (config.ROBOFLOW_PEST_MODEL_VERSION or "").strip())
     disease_ai = "configured" if (roboflow_disease or config.ENABLE_LOCAL_PREDICTOR) else "not_configured"
@@ -345,140 +349,271 @@ def add_crop(payload: dict, user=Depends(current_user)):
     if not name or len(name) > 80:
         raise HTTPException(422, "Crop name is required")
     keys = ["variety", "sowing_date", "growth_stage", "location", "area", "soil_type", "irrigation_type"]
-    with connection() as db:
-        cur = db.execute("INSERT INTO crops(user_id,name,variety,sowing_date,growth_stage,location,area,soil_type,irrigation_type,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (user["id"], name, *(payload.get(k) for k in keys), now()))
-        audit(db, user["id"], "crop_created", "crop", cur.lastrowid)
-        row = db.execute("SELECT * FROM crops WHERE id=?", (cur.lastrowid,)).fetchone()
-    return dict(row)
+    identity = set_database_identity(user.get("auth_uid")) if user.get("auth_uid") else None
+    try:
+        with connection() as db:
+            cur = db.execute("INSERT INTO crops(user_id,name,variety,sowing_date,growth_stage,location,area,soil_type,irrigation_type,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)", (user["id"], name, *(payload.get(k) for k in keys), now()))
+            audit(db, user["id"], "crop_created", "crop", cur.lastrowid)
+            row = db.execute("SELECT * FROM crops WHERE id=?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+    finally:
+        if identity is not None:
+            reset_database_identity(identity)
 
 @app.get("/api/crops")
 def list_crops(user=Depends(current_user)):
-    with connection() as db:
-        return [dict(r) for r in db.execute("SELECT * FROM crops WHERE user_id=? ORDER BY id DESC", (user["id"],))]
+    identity = set_database_identity(user.get("auth_uid")) if user.get("auth_uid") else None
+    try:
+        with connection() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM crops WHERE user_id=? ORDER BY id DESC", (user["id"],))]
+    finally:
+        if identity is not None:
+            reset_database_identity(identity)
 
 @app.get("/api/crops/{crop_id}")
 def get_crop(crop_id: int, user=Depends(current_user)):
-    with connection() as db:
-        row = db.execute("SELECT * FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"])).fetchone()
-    if not row: raise HTTPException(404, "Crop not found")
-    return dict(row)
+    identity = set_database_identity(user.get("auth_uid")) if user.get("auth_uid") else None
+    try:
+        with connection() as db:
+            row = db.execute("SELECT * FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"])).fetchone()
+        if not row: raise HTTPException(404, "Crop not found")
+        return dict(row)
+    finally:
+        if identity is not None:
+            reset_database_identity(identity)
 
 @app.put("/api/crops/{crop_id}")
 def edit_crop(crop_id: int, payload: dict, user=Depends(current_user)):
     fields = ["name", "variety", "sowing_date", "growth_stage", "location", "area", "soil_type", "irrigation_type"]
     data = {k: payload[k] for k in fields if k in payload}
     if not data: raise HTTPException(422, "Provide at least one crop field")
-    with connection() as db:
-        cur = db.execute("UPDATE crops SET " + ",".join(f"{k}=?" for k in data) + " WHERE id=? AND user_id=?", (*data.values(), crop_id, user["id"]))
-        if cur.rowcount: audit(db, user["id"], "crop_updated", "crop", crop_id)
-        row = db.execute("SELECT * FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"])).fetchone()
-    if not cur.rowcount: raise HTTPException(404, "Crop not found")
-    return dict(row)
+    identity = set_database_identity(user.get("auth_uid")) if user.get("auth_uid") else None
+    try:
+        with connection() as db:
+            cur = db.execute("UPDATE crops SET " + ",".join(f"{k}=?" for k in data) + " WHERE id=? AND user_id=?", (*data.values(), crop_id, user["id"]))
+            if cur.rowcount: audit(db, user["id"], "crop_updated", "crop", crop_id)
+            row = db.execute("SELECT * FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"])).fetchone()
+        if not cur.rowcount: raise HTTPException(404, "Crop not found")
+        return dict(row)
+    finally:
+        if identity is not None:
+            reset_database_identity(identity)
 
 @app.delete("/api/crops/{crop_id}")
 def remove_crop(crop_id: int, user=Depends(current_user)):
-    with connection() as db:
-        cur = db.execute("DELETE FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"]))
-        if cur.rowcount: audit(db, user["id"], "crop_deleted", "crop", crop_id)
-    if not cur.rowcount: raise HTTPException(404, "Crop not found")
-    return {"success": True}
+    identity = set_database_identity(user.get("auth_uid")) if user.get("auth_uid") else None
+    try:
+        with connection() as db:
+            cur = db.execute("DELETE FROM crops WHERE id=? AND user_id=?", (crop_id, user["id"]))
+            if cur.rowcount: audit(db, user["id"], "crop_deleted", "crop", crop_id)
+        if not cur.rowcount: raise HTTPException(404, "Crop not found")
+        return {"success": True}
+    finally:
+        if identity is not None:
+            reset_database_identity(identity)
 
 _weather_cache = {}
 _weather_cache_lock = threading.Lock()
+
+WMO_WEATHER_CODES = {
+    0: "Clear sky",
+    1: "Mainly clear",
+    2: "Partly cloudy",
+    3: "Overcast",
+    45: "Fog",
+    48: "Depositing rime fog",
+    51: "Light drizzle",
+    53: "Moderate drizzle",
+    55: "Dense drizzle",
+    56: "Light freezing drizzle",
+    57: "Dense freezing drizzle",
+    61: "Slight rain",
+    62: "Moderate rain",
+    63: "Moderate rain",
+    65: "Heavy rain",
+    66: "Light freezing rain",
+    67: "Heavy freezing rain",
+    71: "Slight snow fall",
+    73: "Moderate snow fall",
+    75: "Heavy snow fall",
+    77: "Snow grains",
+    80: "Slight rain showers",
+    81: "Moderate rain showers",
+    82: "Violent rain showers",
+    85: "Slight snow showers",
+    86: "Heavy snow showers",
+    95: "Thunderstorm",
+    96: "Thunderstorm with slight hail",
+    99: "Thunderstorm with heavy hail",
+}
+
+def _fetch_open_meteo_weather(candidates, original_location):
+    try:
+        geo_item = None
+        for cand in candidates:
+            if not cand:
+                continue
+            try:
+                r = requests.get(
+                    "https://geocoding-api.open-meteo.com/v1/search",
+                    params={"name": cand, "count": 1, "language": "en", "format": "json"},
+                    timeout=config.WEATHER_TIMEOUT_SECONDS,
+                )
+                if r.status_code == 200:
+                    results = (r.json() or {}).get("results")
+                    if results and len(results) > 0:
+                        geo_item = results[0]
+                        break
+            except Exception:
+                continue
+
+        if not geo_item:
+            return None
+
+        lat = geo_item.get("latitude")
+        lon = geo_item.get("longitude")
+        resolved_name = geo_item.get("name") or original_location
+        if lat is None or lon is None:
+            return None
+
+        f_res = requests.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": lat,
+                "longitude": lon,
+                "current": "temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m",
+                "wind_speed_unit": "ms",
+            },
+            timeout=config.WEATHER_TIMEOUT_SECONDS,
+        )
+        if f_res.status_code != 200:
+            return None
+
+        c_data = (f_res.json() or {}).get("current") or {}
+        wmo_code = c_data.get("weather_code")
+        condition_desc = WMO_WEATHER_CODES.get(wmo_code, "Clear")
+        precip = c_data.get("precipitation")
+        rainfall = None
+        if precip is not None:
+            try:
+                val = float(precip)
+                rainfall = round(val, 2)
+            except (ValueError, TypeError):
+                rainfall = None
+
+        return {
+            "temperature": round(float(c_data.get("temperature_2m", 0)), 1),
+            "humidity": int(c_data.get("relative_humidity_2m", 0)),
+            "conditions": condition_desc,
+            "wind_speed": round(float(c_data.get("wind_speed_10m", 0)), 1),
+            "rainfall": rainfall,
+            "location": resolved_name,
+        }
+    except Exception as exc:
+        log.warning("Open-Meteo lookup failed for '%s' (%s)", original_location, type(exc).__name__)
+        return None
 
 def weather_for(location):
     location = (location or "").strip()
     if not location or len(location) > 150 or any(ord(ch) < 32 for ch in location):
         return None
     api_key = config.get_weather_api_key()
-    if not api_key:
+    enable_om = getattr(config, "ENABLE_OPEN_METEO", False)
+    if not api_key and not enable_om:
         return None
     cache_key = location.casefold()
     with _weather_cache_lock:
         cached = _weather_cache.get(cache_key)
     if cached and time.monotonic() - cached[0] < config.WEATHER_CACHE_SECONDS:
         return dict(cached[1])
-    try:
-        response = None
-        candidates = [location]
-        cleaned_dist = re.sub(r"(?i)\s+district\b", "", location).strip()
-        if cleaned_dist and cleaned_dist not in candidates:
-            candidates.append(cleaned_dist)
-        if "," in location:
-            parts = [p.strip() for p in location.split(",") if p.strip()]
-            if parts:
-                first = parts[0]
-                first_clean = re.sub(r"(?i)\s+district\b", "", first).strip()
-                for c in (first, first_clean):
-                    if c and c not in candidates:
-                        candidates.append(c)
-                if len(parts) >= 2 and len(parts[-1]) == 2:
-                    code_cand = f"{first_clean},{parts[-1]}"
-                    if code_cand not in candidates:
-                        candidates.append(code_cand)
 
-        for loc_query in candidates:
-            if not loc_query:
-                continue
-            for attempt in range(2):
-                try:
-                    response = requests.get(
-                        "https://api.openweathermap.org/data/2.5/weather",
-                        params={"q": loc_query, "appid": api_key, "units": "metric"},
-                        timeout=config.WEATHER_TIMEOUT_SECONDS,
-                    )
-                    if response.status_code >= 500 and attempt == 0:
+    candidates = [location]
+    cleaned_dist = re.sub(r"(?i)\s+district\b", "", location).strip()
+    if cleaned_dist and cleaned_dist not in candidates:
+        candidates.append(cleaned_dist)
+    if "," in location:
+        parts = [p.strip() for p in location.split(",") if p.strip()]
+        if parts:
+            first = parts[0]
+            first_clean = re.sub(r"(?i)\s+district\b", "", first).strip()
+            for c in (first, first_clean):
+                if c and c not in candidates:
+                    candidates.append(c)
+            if len(parts) >= 2 and len(parts[-1]) == 2:
+                code_cand = f"{first_clean},{parts[-1]}"
+                if code_cand not in candidates:
+                    candidates.append(code_cand)
+
+    result = None
+
+    if api_key:
+        try:
+            response = None
+            for loc_query in candidates:
+                if not loc_query:
+                    continue
+                for attempt in range(2):
+                    try:
+                        response = requests.get(
+                            "https://api.openweathermap.org/data/2.5/weather",
+                            params={"q": loc_query, "appid": api_key, "units": "metric"},
+                            timeout=config.WEATHER_TIMEOUT_SECONDS,
+                        )
+                        if response.status_code >= 500 and attempt == 0:
+                            time.sleep(0.1)
+                            continue
+                        if response.status_code == 200:
+                            break
+                        elif response.status_code in (401, 403, 404):
+                            break
+                        else:
+                            response.raise_for_status()
+                    except (requests.Timeout, requests.ConnectionError):
+                        if attempt:
+                            raise
                         time.sleep(0.1)
-                        continue
-                    if response.status_code == 200:
-                        break
-                    elif response.status_code == 404:
-                        break
-                    else:
-                        response.raise_for_status()
-                except (requests.Timeout, requests.ConnectionError):
-                    if attempt:
-                        raise
-                    time.sleep(0.1)
+                if response and response.status_code == 200:
+                    break
+
             if response and response.status_code == 200:
-                break
+                data = response.json()
+                main_data = data.get("main") or {}
+                wind_data = data.get("wind") or {}
+                weather_list = data.get("weather") or []
 
-        if not response or response.status_code != 200:
-            log.warning("Weather lookup failed or location not found for: %s", location)
-            return None
+                condition_desc = "Clear"
+                if weather_list and isinstance(weather_list, list) and len(weather_list) > 0:
+                    condition_desc = weather_list[0].get("description", "Clear").capitalize()
 
-        data = response.json()
-        main_data = data.get("main") or {}
-        wind_data = data.get("wind") or {}
-        weather_list = data.get("weather") or []
-
-        condition_desc = "Clear"
-        if weather_list and isinstance(weather_list, list) and len(weather_list) > 0:
-            condition_desc = weather_list[0].get("description", "Clear").capitalize()
-
-        rain_obj = data.get("rain") or {}
-        rainfall = None
-        if isinstance(rain_obj, dict):
-            rainfall = rain_obj.get("1h")
-            if rainfall is None:
-                rainfall = rain_obj.get("3h")
-        elif isinstance(rain_obj, (int, float)):
-            rainfall = float(rain_obj)
-        if rainfall is not None:
-            try:
-                rainfall = round(float(rainfall), 2)
-            except (ValueError, TypeError):
+                rain_obj = data.get("rain") or {}
                 rainfall = None
+                if isinstance(rain_obj, dict):
+                    rainfall = rain_obj.get("1h")
+                    if rainfall is None:
+                        rainfall = rain_obj.get("3h")
+                elif isinstance(rain_obj, (int, float)):
+                    rainfall = float(rain_obj)
+                if rainfall is not None:
+                    try:
+                        rainfall = round(float(rainfall), 2)
+                    except (ValueError, TypeError):
+                        rainfall = None
 
-        result = {
-            "temperature": round(float(main_data.get("temp", 0)), 1),
-            "humidity": int(main_data.get("humidity", 0)),
-            "conditions": condition_desc,
-            "wind_speed": round(float(wind_data.get("speed", 0)), 1),
-            "rainfall": rainfall,
-            "location": data.get("name") or location,
-        }
+                result = {
+                    "temperature": round(float(main_data.get("temp", 0)), 1),
+                    "humidity": int(main_data.get("humidity", 0)),
+                    "conditions": condition_desc,
+                    "wind_speed": round(float(wind_data.get("speed", 0)), 1),
+                    "rainfall": rainfall,
+                    "location": data.get("name") or location,
+                }
+        except Exception as exc:
+            log.warning("OpenWeatherMap lookup failed for '%s' (%s)", location, type(exc).__name__)
 
+    if not result and enable_om:
+        result = _fetch_open_meteo_weather(candidates, location)
+
+    if result:
         with _weather_cache_lock:
             _weather_cache[cache_key] = (time.monotonic(), result)
             if len(_weather_cache) > 256:
@@ -488,14 +623,14 @@ def weather_for(location):
                     oldest = min(_weather_cache, key=lambda key: _weather_cache[key][0])
                     _weather_cache.pop(oldest, None)
         return dict(result)
-    except Exception as exc:
-        log.warning("Weather lookup failed for '%s' (%s)", location, type(exc).__name__)
-        return None
+
+    log.warning("Weather lookup failed or location not found for: %s", location)
+    return None
 
 @app.get("/api/weather")
 def weather_endpoint(location: str = Query("", description="City or district name")):
     location = (location or "").strip()
-    if not config.get_weather_api_key():
+    if not (config.get_weather_api_key() or getattr(config, "ENABLE_OPEN_METEO", False)):
         return {
             "success": False,
             "available": False,
@@ -519,7 +654,7 @@ def weather_endpoint(location: str = Query("", description="City or district nam
 @app.get("/test-weather")
 def test_weather(location: str = Query("Tirunelveli", description="City or district name")):
     location = (location or "").strip()
-    if not config.get_weather_api_key():
+    if not (config.get_weather_api_key() or getattr(config, "ENABLE_OPEN_METEO", False)):
         return {"status": "not_configured", "message": "Weather service not configured"}
     if not location:
         return {"status": "unavailable", "message": "Location parameter is required"}
@@ -666,7 +801,7 @@ async def predict(image: UploadFile = File(...), cropType: str = Form(""), locat
             pass
     weather = weather_for(loc)
     weather_message = None
-    if not config.get_weather_api_key():
+    if not (config.get_weather_api_key() or getattr(config, "ENABLE_OPEN_METEO", False)):
         weather_message = "Weather service not configured. Add WEATHER_API_KEY in .env to include weather in risk estimates."
     elif not loc:
         weather_message = "No location provided for weather lookup."

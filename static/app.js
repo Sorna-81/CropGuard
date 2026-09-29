@@ -490,49 +490,182 @@
     } catch (error) { showError(error); }
   });
 
-  async function loadAlerts() {
-    const [alerts, crops] = await Promise.all([api.get('/api/alerts'), api.get('/api/crops')]);
-    state.alerts = alerts; state.crops = crops; updateAlertBadge(alerts);
+  let activeAlertFilter = 'all';
+
+  function renderAlertsList() {
     const list = $('#alertsList');
     const empty = $('#alertsEmpty');
+    const filteredEmpty = $('#alertsFilteredEmpty');
+    const alerts = state.alerts || [];
+    const crops = state.crops || [];
+
     if (!alerts || alerts.length === 0) {
       if (list) list.innerHTML = '';
       if (empty) empty.hidden = false;
+      if (filteredEmpty) filteredEmpty.hidden = true;
       return;
     }
     if (empty) empty.hidden = true;
-    list.innerHTML = alerts.map((alert) => {
+
+    const query = ($('#alertsSearchInput')?.value || '').trim().toLowerCase();
+
+    const filtered = alerts.filter((alert) => {
+      if (activeAlertFilter === 'unread' && alert.is_read) return false;
+      if (activeAlertFilter === 'read' && !alert.is_read) return false;
+      if (query) {
+        const crop = crops.find((item) => item.id === alert.crop_id);
+        const cropName = (alert.crop_name || crop?.name || '').toLowerCase();
+        const diseaseName = (alert.disease_name || alert.title || '').toLowerCase();
+        const msg = (alert.message || '').toLowerCase();
+        if (!cropName.includes(query) && !diseaseName.includes(query) && !msg.includes(query)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    if (filteredEmpty) filteredEmpty.hidden = filtered.length > 0;
+
+    if (!list) return;
+
+    list.innerHTML = filtered.map((alert) => {
       const crop = crops.find((item) => item.id === alert.crop_id);
-      const cropName = alert.crop_name || crop?.name || 'Crop';
+      const cropName = alert.crop_name || crop?.name || 'Protected Crop';
       const diseaseName = alert.disease_name || alert.title || 'High Risk Condition';
       const riskLevel = alert.scan_risk_level || alert.severity || 'HIGH';
       const severity = alert.scan_severity || alert.severity || 'SEVERE';
       const riskClassStr = riskClass(riskLevel);
+
       return `<div class="col-lg-6">
-        <article class="card panel-card p-4 h-100 ${alert.is_read ? 'opacity-75' : 'border-start border-danger border-4 shadow-sm'}">
+        <article class="card alert-card-special p-4 h-100 shadow-sm ${alert.is_read ? 'read' : 'unread'}">
           <div class="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <span class="badge ${alert.is_read ? 'text-bg-secondary' : 'text-bg-danger'} mb-1">${alert.is_read ? 'Read' : 'Active Warning'}</span>
-              <h2 class="h5 mb-0 fw-bold">${esc(diseaseName)}</h2>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="badge ${alert.is_read ? 'bg-secondary' : 'bg-danger pulse-badge'} text-white">
+                <i class="fas ${alert.is_read ? 'fa-circle-check' : 'fa-triangle-exclamation'} me-1"></i>${alert.is_read ? 'Acknowledged' : 'Active Warning'}
+              </span>
+              <span class="badge bg-light text-dark border">
+                <i class="fas fa-seedling text-success me-1"></i>${esc(cropName)}
+              </span>
             </div>
-            <span class="risk-pill ${riskClassStr}">${esc(riskLevel)}</span>
+            <span class="risk-pill ${riskClassStr}">${esc(riskLevel)} RISK</span>
           </div>
-          <div class="text-muted small mb-2">
-            <strong>Crop:</strong> ${esc(cropName)} · <strong>Severity:</strong> ${esc(severity)}
+
+          <h2 class="h5 mt-2 mb-1 fw-bold text-dark">${esc(diseaseName)}</h2>
+          <div class="text-muted small mb-3">
+            <i class="far fa-clock me-1"></i>${esc(dateText(alert.created_at))} · Severity: <strong class="text-danger">${esc(severity)}</strong>
           </div>
-          <p class="mb-3 text-secondary">${esc(alert.message)}</p>
-          <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
-            <span class="small text-muted"><i class="far fa-clock me-1"></i>${esc(dateText(alert.created_at))}</span>
-            ${alert.is_read ? '<span class="small text-muted"><i class="fas fa-check-circle text-success me-1"></i>Acknowledged</span>' : `<button class="btn btn-sm btn-outline-success" data-read-alert="${alert.id}"><i class="fas fa-check me-1"></i>Mark as read</button>`}
+
+          <p class="mb-3 text-secondary lh-base">${esc(alert.message)}</p>
+
+          <div class="emergency-protocol-box mb-3">
+            <div class="d-flex align-items-center gap-1 text-success fw-bold small mb-1">
+              <i class="fas fa-notes-medical"></i> Immediate Field Directives
+            </div>
+            <ul class="small text-muted mb-0 ps-3">
+              <li>Inspect and sanitize tools; isolate severely symptomatic leaves.</li>
+              <li>Limit canopy moisture; transition from overhead watering to drip lines.</li>
+              <li>Verify targeted biological or registered label fungicide treatment in History.</li>
+            </ul>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mt-auto pt-3 border-top gap-2 flex-wrap">
+            <div>
+              ${alert.is_read
+                ? '<span class="small text-muted"><i class="fas fa-check-circle text-success me-1"></i>Acknowledged</span>'
+                : `<button class="btn btn-sm btn-success fw-semibold" data-read-alert="${alert.id}"><i class="fas fa-check me-1"></i>Mark as read</button>`}
+            </div>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-secondary" href="#history">
+                <i class="fas fa-clock-rotate-left me-1"></i>View in History
+              </a>
+            </div>
           </div>
         </article>
       </div>`;
     }).join('');
   }
-  $('#alertsList').addEventListener('click', async (event) => {
-    const button = event.target.closest('[data-read-alert]'); if (!button) return;
-    try { await api.put(`/api/alerts/${button.dataset.readAlert}/read`, {}); await loadAlerts(); toast('Alert marked as read.', 'success'); }
-    catch (error) { showError(error); }
+
+  async function loadAlerts() {
+    const [alerts, crops] = await Promise.all([api.get('/api/alerts'), api.get('/api/crops')]);
+    state.alerts = alerts;
+    state.crops = crops;
+    updateAlertBadge(alerts);
+
+    // Update KPIs
+    const unread = alerts.filter((a) => !a.is_read);
+    const read = alerts.filter((a) => a.is_read);
+    const uniqueCrops = new Set(unread.filter((a) => a.crop_id).map((a) => a.crop_id)).size;
+
+    if ($('#alertsActiveCount')) $('#alertsActiveCount').textContent = unread.length;
+    if ($('#alertsActiveBadge')) $('#alertsActiveBadge').hidden = unread.length === 0;
+    if ($('#alertsCropsCount')) $('#alertsCropsCount').textContent = uniqueCrops;
+    if ($('#alertsReadCount')) $('#alertsReadCount').textContent = read.length;
+    if ($('#alertsTotalCount')) $('#alertsTotalCount').textContent = alerts.length;
+
+    if ($('#tabCountAll')) $('#tabCountAll').textContent = alerts.length;
+    if ($('#tabCountUnread')) $('#tabCountUnread').textContent = unread.length;
+    if ($('#tabCountRead')) $('#tabCountRead').textContent = read.length;
+
+    const statusText = $('#alertsStatusText');
+    const shieldIcon = $('#alertsShieldIcon');
+    if (statusText) {
+      statusText.textContent = unread.length > 0 ? `${unread.length} Outbreak${unread.length > 1 ? 's' : ''} Active` : 'All Plots Safe & Monitored';
+    }
+    if (shieldIcon) {
+      shieldIcon.className = unread.length > 0 ? 'fas fa-shield-virus fa-2x text-warning animate__animated animate__pulse animate__infinite' : 'fas fa-shield-halved fa-2x text-white';
+    }
+
+    renderAlertsList();
+  }
+
+  $('#alertsList')?.addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-read-alert]');
+    if (!button) return;
+    try {
+      await api.put(`/api/alerts/${button.dataset.readAlert}/read`, {});
+      toast('Alert acknowledged.', 'success');
+      await loadAlerts();
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $('#markAllAlertsReadBtn')?.addEventListener('click', async () => {
+    const unread = (state.alerts || []).filter((a) => !a.is_read);
+    if (!unread.length) {
+      toast('All alerts are already acknowledged.', 'info');
+      return;
+    }
+    try {
+      await Promise.all(unread.map((a) => api.put(`/api/alerts/${a.id}/read`, {})));
+      toast(`Acknowledged ${unread.length} alert${unread.length > 1 ? 's' : ''}.`, 'success');
+      await loadAlerts();
+    } catch (error) {
+      showError(error);
+    }
+  });
+
+  $('#alertFilterTabs')?.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-alert-filter]');
+    if (!btn) return;
+    $$('.alert-tab', $('#alertFilterTabs')).forEach((tab) => {
+      tab.classList.remove('active', 'btn-success', 'btn-danger', 'btn-secondary');
+      if (tab.dataset.alertFilter === 'unread') tab.classList.add('btn-outline-danger');
+      else if (tab.dataset.alertFilter === 'read') tab.classList.add('btn-outline-secondary');
+      else tab.classList.add('btn-outline-success');
+    });
+    btn.classList.add('active');
+    btn.classList.remove('btn-outline-success', 'btn-outline-danger', 'btn-outline-secondary');
+    if (btn.dataset.alertFilter === 'unread') btn.classList.add('btn-danger');
+    else if (btn.dataset.alertFilter === 'read') btn.classList.add('btn-secondary');
+    else btn.classList.add('btn-success');
+
+    activeAlertFilter = btn.dataset.alertFilter;
+    renderAlertsList();
+  });
+
+  $('#alertsSearchInput')?.addEventListener('input', () => {
+    renderAlertsList();
   });
 
   async function loadExpert() {

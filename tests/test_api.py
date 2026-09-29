@@ -15,7 +15,14 @@ class CropGuardAPITests(unittest.TestCase):
     def setUp(self):
         self.db_path = Path.cwd() / ".test-cropguard.db"
         self.db_path.unlink(missing_ok=True)
+        self.orig_db_url = getattr(config, "DATABASE_URL", "")
+        self.orig_db_database_url = getattr(database, "DATABASE_URL", "")
+        self.orig_supa_enabled = getattr(config, "SUPABASE_DATABASE_ENABLED", False)
+        config.DATABASE_URL = f"sqlite:///{self.db_path.as_posix()}"
+        database.DATABASE_URL = config.DATABASE_URL
+        config.SUPABASE_DATABASE_ENABLED = False
         database.DB_PATH = self.db_path
+        database.initialize_database()
         config.JWT_SECRET_KEY = "test-only-signing-secret"
         config.ROBOFLOW_API_KEY = ""
         config.ROBOFLOW_MODEL_ID = ""
@@ -31,6 +38,9 @@ class CropGuardAPITests(unittest.TestCase):
     def tearDown(self):
         self.client_context.__exit__(None, None, None)
         self.db_path.unlink(missing_ok=True)
+        config.DATABASE_URL = self.orig_db_url
+        database.DATABASE_URL = self.orig_db_database_url
+        config.SUPABASE_DATABASE_ENABLED = self.orig_supa_enabled
 
     def farmer(self, email="farmer@example.test"):
         response = self.client.post("/api/auth/register", data={"email": email, "password": "strong-password-123", "full_name": "Test Farmer"})
@@ -245,6 +255,48 @@ class CropGuardAPITests(unittest.TestCase):
 
             test_w_conf = self.client.get("/test-weather", params={"location": "Tirunelveli"}).json()
             self.assertEqual(test_w_conf["status"], "success")
+
+    def test_weather_open_meteo_fallback(self):
+        config.WEATHER_API_KEY = ""
+        config.ENABLE_OPEN_METEO = True
+        _weather_cache.clear()
+
+        def mock_get(url, *args, **kwargs):
+            resp = Mock()
+            resp.status_code = 200
+            if "geocoding-api.open-meteo.com" in url:
+                resp.json.return_value = {
+                    "results": [
+                        {"name": "Tirunelveli", "latitude": 8.7274, "longitude": 77.6838}
+                    ]
+                }
+            elif "api.open-meteo.com" in url:
+                resp.json.return_value = {
+                    "current": {
+                        "temperature_2m": 32.2,
+                        "relative_humidity_2m": 55,
+                        "precipitation": 0.0,
+                        "weather_code": 1,
+                        "wind_speed_10m": 4.5,
+                    }
+                }
+            else:
+                resp.status_code = 404
+            return resp
+
+        with patch("cropguard.main.requests.get", side_effect=mock_get):
+            res = self.client.get("/api/weather", params={"location": "Tirunelveli"}).json()
+            self.assertTrue(res["available"])
+            data = res["weather_data"]
+            self.assertEqual(data["location"], "Tirunelveli")
+            self.assertEqual(data["temperature"], 32.2)
+            self.assertEqual(data["humidity"], 55)
+            self.assertEqual(data["conditions"], "Mainly clear")
+            self.assertEqual(data["wind_speed"], 4.5)
+            self.assertEqual(data["rainfall"], 0.0)
+
+            test_w = self.client.get("/test-weather", params={"location": "Tirunelveli"}).json()
+            self.assertEqual(test_w["status"], "success")
 
     def test_complete_scan_flow_with_tomato_leaf_weather_fallback_and_available(self):
         headers = self.farmer()
